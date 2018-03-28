@@ -59,6 +59,7 @@ void zlibc_free(void *ptr) {
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
 #else
+//前面 PREFIX_SIZE 大小的空间存放size的值
 #if defined(__sun) || defined(__sparc) || defined(__sparc__)
 #define PREFIX_SIZE (sizeof(long long))
 #else
@@ -100,6 +101,12 @@ void zlibc_free(void *ptr) {
 
 #endif
 
+
+// sizeof(long) = 8 [64位系统中]  
+//malloc()本身能够保证所分配的内存是8字节对齐的
+//_n&(sizeof(long)-1) 判断是否是8的倍数,如果你要分配的内存不是8的倍数,那么malloc就会多分配一点，来凑成8的倍数
+//_n += sizeof(long)-(_n&(sizeof(long)-1)) 补齐成8的倍数
+//这里是统计实际上分配的内存大小
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
@@ -120,10 +127,12 @@ void zlibc_free(void *ptr) {
     } \
 } while(0)
 
+//used_memory维护实际已分配内存的大小
 static size_t used_memory = 0;
 static int zmalloc_thread_safe = 0;
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+//内存不足,打印错误信息并终止程序
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
@@ -141,8 +150,9 @@ void *zmalloc(size_t size) {
     update_zmalloc_stat_alloc(zmalloc_size(ptr));
     return ptr;
 #else
-    *((size_t*)ptr) = size;
+    *((size_t*)ptr) = size;//前PREFIX_SIZE指针存放size的值
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
+    //后移PREFIX_SIZE就是新分配的内存地址
     return (char*)ptr+PREFIX_SIZE;
 #endif
 }
@@ -161,6 +171,7 @@ void *zcalloc(size_t size) {
 #endif
 }
 
+//重新分配 size 大小的内存
 void *zrealloc(void *ptr, size_t size) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -194,18 +205,20 @@ void *zrealloc(void *ptr, size_t size) {
  * malloc itself, given that in that case we store a header with this
  * information as the first bytes of every allocation. */
 #ifndef HAVE_MALLOC_SIZE
-size_t zmalloc_size(void *ptr) {
+size_t zmalloc_size(void *ptr) {//size+PREFIX_SIZE
+    //左移PREFIX_SIZE位指针存储size的值
     void *realptr = (char*)ptr-PREFIX_SIZE;
     size_t size = *((size_t*)realptr);
     /* Assume at least that all the allocations are padded at sizeof(long) by
      * the underlying allocator. */
+    //size要是8的倍数,不是的话补齐
     if (size&(sizeof(long)-1)) size += sizeof(long)-(size&(sizeof(long)-1));
     return size+PREFIX_SIZE;
 }
 #endif
 
 void zfree(void *ptr) {
-#ifndef HAVE_MALLOC_SIZE
+#ifndef HAVE_MALLOC_SIZEHAVE_MALLOC_SIZE
     void *realptr;
     size_t oldsize;
 #endif
@@ -222,7 +235,9 @@ void zfree(void *ptr) {
 #endif
 }
 
+//字符串复制
 char *zstrdup(const char *s) {
+    //strlen()不包含尾0,+1
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);
 
@@ -249,6 +264,7 @@ size_t zmalloc_used_memory(void) {
     return um;
 }
 
+//设置线程安全标志
 void zmalloc_enable_thread_safeness(void) {
     zmalloc_thread_safe = 1;
 }
@@ -300,6 +316,7 @@ size_t zmalloc_get_rss(void) {
     if (!x) return 0;
     *x = '\0';
 
+    //string to number 10进制
     rss = strtoll(p,NULL,10);
     rss *= page;
     return rss;
@@ -336,6 +353,8 @@ size_t zmalloc_get_rss(void) {
 #endif
 
 /* Fragmentation = RSS / allocated-bytes */
+
+//所给大小与已使用内存大小比率
 float zmalloc_get_fragmentation_ratio(size_t rss) {
     return (float)rss/zmalloc_used_memory();
 }

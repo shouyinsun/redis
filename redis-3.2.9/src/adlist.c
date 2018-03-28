@@ -38,6 +38,8 @@
  * by the user before to call AlFreeList().
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
+
+//node 的value 使用 free 方法释放
 list *listCreate(void)
 {
     struct list *list;
@@ -55,6 +57,11 @@ list *listCreate(void)
 /* Free the whole list.
  *
  * This function can't fail. */
+
+/***
+ * 如果定义了链表(list)的指针函数free, Redis会使用它释放链表的每一个结点的值(value),否则需要用户手动释放。
+ * 结点的内存使用Redis自己实现的zfree()释放
+ * **/
 void listRelease(list *list)
 {
     unsigned long len;
@@ -77,6 +84,8 @@ void listRelease(list *list)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+
+//增阿头结点
 list *listAddNodeHead(list *list, void *value)
 {
     listNode *node;
@@ -103,6 +112,8 @@ list *listAddNodeHead(list *list, void *value)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+
+//增加尾结点
 list *listAddNodeTail(list *list, void *value)
 {
     listNode *node;
@@ -123,6 +134,7 @@ list *listAddNodeTail(list *list, void *value)
     return list;
 }
 
+//after 在后面添加
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
     listNode *node;
 
@@ -175,6 +187,8 @@ void listDelNode(list *list, listNode *node)
  * call to listNext() will return the next element of the list.
  *
  * This function can't fail. */
+
+//direction  AL_START_HEAD 从头开始    AL_START_TAIL 从后开始
 listIter *listGetIterator(list *list, int direction)
 {
     listIter *iter;
@@ -194,11 +208,14 @@ void listReleaseIterator(listIter *iter) {
 }
 
 /* Create an iterator in the list private iterator structure */
+
+//listIter 回到list头结点
 void listRewind(list *list, listIter *li) {
     li->next = list->head;
     li->direction = AL_START_HEAD;
 }
 
+//listIter 回到list尾结点
 void listRewindTail(list *list, listIter *li) {
     li->next = list->tail;
     li->direction = AL_START_TAIL;

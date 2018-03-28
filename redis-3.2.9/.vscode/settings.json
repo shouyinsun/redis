@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "adlist.h": "c"
+        "adlist.h": "c",
+        "zmalloc.h": "c",
+        "config.h": "c"
     }
 }
