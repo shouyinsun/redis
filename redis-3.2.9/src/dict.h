@@ -45,14 +45,14 @@
 #define DICT_NOTUSED(V) ((void) V)
 
 typedef struct dictEntry {
-    void *key;
+    void *key;// 键 
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
         double d;
-    } v;
-    struct dictEntry *next;
+    } v;// 值(可以有几种不同类型)
+    struct dictEntry *next;// 指向下一个哈希节点(形成链表)
 } dictEntry;
 
 typedef struct dictType {
@@ -66,19 +66,29 @@ typedef struct dictType {
 
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
+
+/**
+ * 哈希表结构
+ * 通过将哈希值相同的元素放到一个链表中来解决冲突问题
+ * **/
 typedef struct dictht {
-    dictEntry **table;
-    unsigned long size;
-    unsigned long sizemask;
-    unsigned long used;
+    dictEntry **table;// 节点指针数组 
+    unsigned long size;// 桶的数量  也即是, table数组的大小
+    unsigned long sizemask;//mask 码,用于地址索引计算
+    unsigned long used;// 已有节点数量  
 } dictht;
 
+/***
+ * 字典结构
+ **/
 typedef struct dict {
-    dictType *type;
+    dictType *type; // 为哈希表中不同类型的值所使用的一族函数 
     void *privdata;
-    dictht ht[2];
-    long rehashidx; /* rehashing not in progress if rehashidx == -1 */
-    int iterators; /* number of iterators currently running */
+    dictht ht[2]; // 每个字典使用两个哈希表 因为要实现渐增式 rehash ,redis 会逐个逐个地将 0 号哈希表的元素移动到 1 号哈希表,直到 0 号哈希表被清空为止
+    /* rehashing not in progress if rehashidx == -1 */
+    long rehashidx; // rehashidx 记录的实际上是 rehash 进行到的索引,比如如果 rehash 进行到第 10 个元素,那么值就为 9,如果没有在进行 rehash ,rehashidx 的值就为 -1
+    /* number of iterators currently running */
+    int iterators; // 当前正在使用的 iterator 的数量
 } dict;
 
 /* If safe is set to 1 this is a safe iterator, that means, you can call
