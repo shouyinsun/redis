@@ -74,8 +74,8 @@ typedef struct dictType {
 typedef struct dictht {
     dictEntry **table;// 节点指针数组 
     unsigned long size;// 桶的数量  也即是, table数组的大小
-    unsigned long sizemask;//mask 码,用于地址索引计算
-    unsigned long used;// 已有节点数量  
+    unsigned long sizemask;//mask 码,用于数组索引计算
+    unsigned long used;// 已有节点数量 (链表中节点总数量)
 } dictht;
 
 /***
@@ -83,10 +83,10 @@ typedef struct dictht {
  **/
 typedef struct dict {
     dictType *type; // 为哈希表中不同类型的值所使用的一族函数 
-    void *privdata;
+    void *privdata;//私有数据
     dictht ht[2]; // 每个字典使用两个哈希表 因为要实现渐增式 rehash ,redis 会逐个逐个地将 0 号哈希表的元素移动到 1 号哈希表,直到 0 号哈希表被清空为止
     /* rehashing not in progress if rehashidx == -1 */
-    long rehashidx; // rehashidx 记录的实际上是 rehash 进行到的索引,比如如果 rehash 进行到第 10 个元素,那么值就为 9,如果没有在进行 rehash ,rehashidx 的值就为 -1
+    long rehashidx; // rehashidx 记录的是 rehash 进行到的索引,比如如果 rehash 进行到第 10 个元素,那么值就为 9,如果没有在进行 rehash ,rehashidx 的值就为 -1
     /* number of iterators currently running */
     int iterators; // 当前正在使用的 iterator 的数量
 } dict;

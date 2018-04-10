@@ -85,7 +85,7 @@ void listRelease(list *list)
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
 
-//增阿头结点
+//增加头结点
 list *listAddNodeHead(list *list, void *value)
 {
     listNode *node;
