@@ -42,6 +42,12 @@
 #include <errno.h>
 #include <stdlib.h>
 
+
+/**
+ * 快速排序
+ * 
+ * **/
+
 static inline char	*med3 (char *, char *, char *,
     int (*)(const void *, const void *));
 static inline void	 swapfunc (char *, char *, size_t, int);

@@ -40,6 +40,42 @@
  * At the same time the elements are added to a skip list mapping scores
  * to Redis objects (so objects are sorted by scores in this "view"). */
 
+/***
+ * dict 映射 redis对象/score
+ * list 映射 socre/redis对象
+ * **/
+
+/** 
+ * 
+ * 
+ * OBJ_ENCODING_ZIPLIST,当有序集合类型达到配置文件中的阈值条件时,就会发生编码类型的转换,转换为OBJ_ENCODING_SKIPLIST类型
+ * 而且转换是双向的,可以相互转换
+ * 
+ 编码encoding	          对象ptr
+ OBJ_ENCODING_SKIPLIST 	 跳跃表和字典实现的有序集合对象
+ OBJ_ENCODING_ZIPLIST 	 压缩列表实现的有序集合对象
+ * 
+ * ***/
+
+
+/***
+ *
+ *  Redis有序集合有三种范围限定
+ * 
+                字典区间
+                排位区间
+                分值区间
+ * 
+ * 
+ * ***/
+
+
+
+
+/***
+ * 跳跃表实现
+ * **/
+
 /* This skiplist implementation is almost a C translation of the original
  * algorithm described by William Pugh in "Skip Lists: A Probabilistic
  * Alternative to Balanced Trees", modified in three ways:
@@ -49,9 +85,12 @@
  * pointers being only at "level 1". This allows to traverse the list
  * from tail to head, useful for ZREVRANGE. */
 
+
+
+
 #include "server.h"
 #include <math.h>
-
+//gte ge 大于等于  lte le 小于等于
 static int zslLexValueGteMin(robj *value, zlexrangespec *spec);
 static int zslLexValueLteMax(robj *value, zlexrangespec *spec);
 
@@ -628,6 +667,14 @@ zskiplistNode *zslLastInLexRange(zskiplist *zsl, zlexrangespec *range) {
     return x;
 }
 
+
+/**
+ * Ziplist 实现
+ * 
+ * 
+ * 
+ * **/
+
 /*-----------------------------------------------------------------------------
  * Ziplist-backed sorted set API
  *----------------------------------------------------------------------------*/
@@ -698,6 +745,8 @@ unsigned int zzlLength(unsigned char *zl) {
 
 /* Move to next entry based on the values in eptr and sptr. Both are set to
  * NULL when there is no next entry. */
+
+// 将当前的元素指针eptr和当前元素分值的指针sptr都指向下一个元素和元素的分值
 void zzlNext(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
     unsigned char *_eptr, *_sptr;
     serverAssert(*eptr != NULL && *sptr != NULL);
@@ -1078,6 +1127,7 @@ unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsig
  * Common sorted set API
  *----------------------------------------------------------------------------*/
 
+//有序集合的元素个数
 unsigned int zsetLength(robj *zobj) {
     int length = -1;
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
@@ -1090,6 +1140,7 @@ unsigned int zsetLength(robj *zobj) {
     return length;
 }
 
+//encoding转换
 void zsetConvert(robj *zobj, int encoding) {
     zset *zs;
     zskiplistNode *node, *next;
@@ -1182,6 +1233,8 @@ void zsetConvertToZiplistIfNeeded(robj *zobj, size_t maxelelen) {
  * storing it into *score. If the element does not exist C_ERR is returned
  * otherwise C_OK is returned and *score is correctly populated.
  * If 'zobj' or 'member' is NULL, C_ERR is returned. */
+
+//member成员的分值保存到score中
 int zsetScore(robj *zobj, robj *member, double *score) {
     if (!zobj || !member) return C_ERR;
 
@@ -1205,8 +1258,11 @@ int zsetScore(robj *zobj, robj *member, double *score) {
 /* This generic command implements both ZADD and ZINCRBY. */
 #define ZADD_NONE 0
 #define ZADD_INCR (1<<0)    /* Increment the score instead of setting it. */
+//不更新存在的成员,只添加新成员
 #define ZADD_NX (1<<1)      /* Don't touch elements not already existing. */
+//仅仅更新存在的成员,不添加新成员
 #define ZADD_XX (1<<2)      /* Only touch elements already exisitng. */
+//返回发生变化的成员总数
 #define ZADD_CH (1<<3)      /* Return num of elements added or updated. */
 void zaddGenericCommand(client *c, int flags) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1584,20 +1640,21 @@ void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
 }
 
+//从集合类型迭代器中恢复存储的值
 typedef struct {
-    robj *subject;
+    robj *subject;//所属的对象
     int type; /* Set, sorted set */
-    int encoding;
-    double weight;
+    int encoding;//编码
+    double weight;//权重
 
     union {
         /* Set iterators. */
         union _iterset {
-            struct {
+            struct {//intset迭代器
                 intset *is;
                 int ii;
             } is;
-            struct {
+            struct {//字典迭代器
                 dict *dict;
                 dictIterator *di;
                 dictEntry *de;
@@ -1630,6 +1687,7 @@ typedef struct {
 #define OPVAL_VALID_LL 4
 
 /* Store value retrieved from the iterator. */
+//集合类型迭代器存储的值
 typedef struct {
     int flags;
     unsigned char _buf[32]; /* Private buffer. */
@@ -1912,9 +1970,9 @@ int zuiCompareByCardinality(const void *s1, const void *s2) {
     return zuiLength((zsetopsrc*)s1) - zuiLength((zsetopsrc*)s2);
 }
 
-#define REDIS_AGGR_SUM 1
-#define REDIS_AGGR_MIN 2
-#define REDIS_AGGR_MAX 3
+#define REDIS_AGGR_SUM 1//和
+#define REDIS_AGGR_MIN 2//最小值
+#define REDIS_AGGR_MAX 3//最大值
 #define zunionInterDictValue(_e) (dictGetVal(_e) == NULL ? 1.0 : *(double*)dictGetVal(_e))
 
 inline static void zunionInterAggregate(double *target, double val, int aggregate) {
@@ -1934,6 +1992,8 @@ inline static void zunionInterAggregate(double *target, double val, int aggregat
     }
 }
 
+
+// ZUNIONSTORE/ZINTERSTORE命令的底层实现
 void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     int i, j;
     long setnum;
@@ -1948,6 +2008,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     int touched = 0;
 
     /* expect setnum input keys to be given */
+    // 取出numkeys参数值,保存在setnum中
     if ((getLongFromObjectOrReply(c, c->argv[2], &setnum, NULL) != C_OK))
         return;
 
@@ -1964,7 +2025,9 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     }
 
     /* read keys to be used for input */
+    // 为每一个key分配一个迭代器空间
     src = zcalloc(sizeof(zsetopsrc) * setnum);
+    // 遍历key
     for (i = 0, j = 3; i < setnum; i++, j++) {
         robj *obj = lookupKeyWrite(c->db,c->argv[j]);
         if (obj != NULL) {
@@ -1989,7 +2052,9 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     if (j < c->argc) {
         int remaining = c->argc - j;
 
+        // 解析其他的参数
         while (remaining) {
+            //设置了权重WEIGHTS参数
             if (remaining >= (setnum + 1) && !strcasecmp(c->argv[j]->ptr,"weights")) {
                 j++; remaining--;
                 for (i = 0; i < setnum; i++, j++, remaining--) {
@@ -2000,8 +2065,10 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                         return;
                     }
                 }
+                // 设置了集合方式AGGREGATE参数
             } else if (remaining >= 2 && !strcasecmp(c->argv[j]->ptr,"aggregate")) {
                 j++; remaining--;
+                 // 根据不同的参数,设置默认的方式
                 if (!strcasecmp(c->argv[j]->ptr,"sum")) {
                     aggregate = REDIS_AGGR_SUM;
                 } else if (!strcasecmp(c->argv[j]->ptr,"min")) {
@@ -2024,12 +2091,18 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
 
     /* sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
+     // 对所有集合元素的多少,从小到大排序,提高算法性能
     qsort(src,setnum,sizeof(zsetopsrc),zuiCompareByCardinality);
 
     dstobj = createZsetObject();
     dstzset = dstobj->ptr;
     memset(&zval, 0, sizeof(zval));
 
+     // ZINTERSTORE命令 交集
+     /**
+      * 所有集合按元素个数从小到大排序,然后以元素个数最少的集合,也就是第一个集合为基数,
+      * 遍历该集合的所有元素,如果元素在之后的所有集合都存在,则加入结果集中
+      * **/
     if (op == SET_OP_INTER) {
         /* Skip everything if the smallest input is empty. */
         if (zuiLength(&src[0]) > 0) {
@@ -2049,6 +2122,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                         value = zval.score*src[j].weight;
                         zunionInterAggregate(&score,value,aggregate);
                     } else if (zuiFind(&src[j],&zval,&value)) {
+                        //加权
                         value *= src[j].weight;
                         zunionInterAggregate(&score,value,aggregate);
                     } else {
@@ -2072,7 +2146,12 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
             }
             zuiClearIterator(&src[0]);
         }
-    } else if (op == SET_OP_UNION) {
+    } else if (op == SET_OP_UNION) {//并集
+    /***
+     * 所有集合按元素个数从小到大排序,遍历所有的集合的所有元素,
+     * 将元素添加到结果集中,如果元素不存在,则添加,否则操作下一个元素
+     * 
+     * ***/
         dict *accumulator = dictCreate(&setDictType,NULL);
         dictIterator *di;
         dictEntry *de;
@@ -2081,6 +2160,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
         if (setnum) {
             /* Our union is at least as large as the largest set.
              * Resize the dictionary ASAP to avoid useless rehashing. */
+            //并集至少跟最大集合的一样
             dictExpand(accumulator,zuiLength(&src[setnum-1]));
         }
 
@@ -2290,6 +2370,8 @@ void zrevrangeCommand(client *c) {
 }
 
 /* This command implements ZRANGEBYSCORE, ZREVRANGEBYSCORE. */
+
+// ZRANGEBYSCORE ZREVRANGEBYSCORE命令的底层实现
 void genericZrangebyscoreCommand(client *c, int reverse) {
     zrangespec range;
     robj *key = c->argv[1];
@@ -2321,9 +2403,11 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         int pos = 4;
 
         while (remaining) {
+            //WITHSCORES 标志
             if (remaining >= 1 && !strcasecmp(c->argv[pos]->ptr,"withscores")) {
                 pos++; remaining--;
                 withscores = 1;
+                //limit
             } else if (remaining >= 3 && !strcasecmp(c->argv[pos]->ptr,"limit")) {
                 if ((getLongFromObjectOrReply(c, c->argv[pos+1], &offset, NULL) != C_OK) ||
                     (getLongFromObjectOrReply(c, c->argv[pos+2], &limit, NULL) != C_OK)) return;
@@ -2850,6 +2934,7 @@ void zscoreCommand(client *c) {
     }
 }
 
+//ZRANK ZREVRANK命令底层实现
 void zrankGenericCommand(client *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];

@@ -457,12 +457,16 @@ typedef long long mstime_t; /* millisecond time type. */
 /* A redis object, that is a type able to hold a string / list / set */
 
 /* The actual Redis Object */
+
+//真正的redis对象
 #define LRU_BITS 24
 #define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */
 #define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 typedef struct redisObject {
+    // ：位域  一般用在结构体中来减少占用的内存空间
     unsigned type:4;
-    unsigned encoding:4;
+    unsigned encoding:4;//编码
+    //LRU时间
     unsigned lru:LRU_BITS; /* lru time (relative to server.lruclock) */
     int refcount;
     void *ptr;
@@ -652,6 +656,7 @@ typedef struct zskiplist {
     int level;
 } zskiplist;
 
+//有序集合
 typedef struct zset {
     dict *dict;
     zskiplist *zsl;
@@ -1283,6 +1288,7 @@ typedef struct {
 /* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. */
 typedef struct {
     robj *min, *max;  /* May be set to shared.(minstring|maxstring) */
+    //是否排除最大、最小
     int minex, maxex; /* are min or max exclusive? */
 } zlexrangespec;
 

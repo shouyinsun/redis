@@ -104,7 +104,7 @@ void zlibc_free(void *ptr) {
 
 // sizeof(long) = 8 [64位系统中]  
 //malloc()本身能够保证所分配的内存是8字节对齐的
-//_n&(sizeof(long)-1) 判断是否是8的倍数,如果你要分配的内存不是8的倍数,那么malloc就会多分配一点，来凑成8的倍数
+//_n&(sizeof(long)-1) 判断是否是8的倍数,如果你要分配的内存不是8的倍数,那么malloc就会多分配一点,来凑成8的倍数
 //_n += sizeof(long)-(_n&(sizeof(long)-1)) 补齐成8的倍数
 //这里是统计实际上分配的内存大小
 #define update_zmalloc_stat_alloc(__n) do { \
