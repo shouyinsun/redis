@@ -56,6 +56,7 @@ uint64_t intrev64(uint64_t v);
 #define memrev16ifbe(p) memrev16(p)
 #define memrev32ifbe(p) memrev32(p)
 #define memrev64ifbe(p) memrev64(p)
+//整数大小端的转换
 #define intrev16ifbe(v) intrev16(v)
 #define intrev32ifbe(v) intrev32(v)
 #define intrev64ifbe(v) intrev64(v)

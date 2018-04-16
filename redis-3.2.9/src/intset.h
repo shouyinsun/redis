@@ -32,11 +32,26 @@
 #define __INTSET_H
 #include <stdint.h>
 
+/***
+ * 柔性数组既数组大小待定的数组 
+ * C语言中结构体的最后一个元素可以是大小未知的数组
+ * 也就是所谓的0长 所以可以用结构体来创建柔性数组
+ * 
+ * 
+ * ***/
 typedef struct intset {
-    uint32_t encoding;
-    uint32_t length;
-    int8_t contents[];
+    uint32_t encoding;//编码格式 有三种格式 初始值默认为INTSET_ENC_INT16
+    uint32_t length;//集合元素数量
+    int8_t contents[];//柔性数组不占intset结构体大小 并且数组中的元素从小到大排列
 } intset;
+
+
+/****
+#define INTSET_ENC_INT16 (sizeof(int16_t))   //16位,2个字节,表示范围-32768~32767
+#define INTSET_ENC_INT32 (sizeof(int32_t))   //32位,4个字节,表示范围-2147483648~2147483647
+#define INTSET_ENC_INT64 (sizeof(int64_t))   //64位,8个字节,表示范围-9223372036854775808~9223372036854775807
+****/
+
 
 intset *intsetNew(void);
 intset *intsetAdd(intset *is, int64_t value, uint8_t *success);
