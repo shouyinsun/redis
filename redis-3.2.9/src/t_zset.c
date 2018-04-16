@@ -43,6 +43,9 @@
 /***
  * dict 映射 redis对象/score
  * list 映射 socre/redis对象
+ * 
+ * 跳跃表元素有序,而且可以范围查找,且比平衡树简单
+   哈希表查找单个key时间复杂度性能高 O(logN) vs O(1)
  * **/
 
 /** 
@@ -101,13 +104,16 @@ zskiplistNode *zslCreateNode(int level, double score, robj *obj) {
     return zn;
 }
 
+//创建一个跳跃表
 zskiplist *zslCreate(void) {
     int j;
     zskiplist *zsl;
 
+    //sizeof(*p) 指针所代表内容字节数
     zsl = zmalloc(sizeof(*zsl));
     zsl->level = 1;
     zsl->length = 0;
+    //层数为32 分数为0 没有obj的跳跃表头节点
     zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
     for (j = 0; j < ZSKIPLIST_MAXLEVEL; j++) {
         zsl->header->level[j].forward = NULL;
@@ -139,36 +145,49 @@ void zslFree(zskiplist *zsl) {
  * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL
  * (both inclusive), with a powerlaw-alike distribution where higher
  * levels are less likely to be returned. */
-int zslRandomLevel(void) {
+
+
+int zslRandomLevel(void) {// //返回一个随机层数值
     int level = 1;
+    //ZSKIPLIST_P 0.25   0.25的概率
+    //(random()&0xFFFF)只保留低两个字节的位值 范围为0到0xFFFF
     while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
         level += 1;
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
 
+
+//插入一个节点,并返回新节点地址
 zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
     int i, level;
 
     serverAssert(!isnan(score));
+    //头节点
     x = zsl->header;
+    //从大到小
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
+        //更新rank[i]为i+1所跨越的节点数 但是最外一层为0
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
         while (x->level[i].forward &&
             (x->level[i].forward->score < score ||
                 (x->level[i].forward->score == score &&
                 compareStringObjects(x->level[i].forward->obj,obj) < 0))) {
+            //记录该层一共跨越了多少节点 加上 上一层遍历所跨越的节点数
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
+        //update[0]后插入节点
         update[i] = x;
     }
     /* we assume the key is not already inside, since we allow duplicated
      * scores, and the re-insertion of score and redis object should never
      * happen since the caller of zslInsert() should test in the hash table
      * if the element is already inside or not. */
+
+    //获得一个随机的层数
     level = zslRandomLevel();
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
@@ -178,8 +197,11 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         }
         zsl->level = level;
     }
+    //创建一个节点
     x = zslCreateNode(level,score,obj);
+    //由底向上
     for (i = 0; i < level; i++) {
+        //插入后面
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;
 
@@ -205,11 +227,13 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
 /* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */
 void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
     int i;
+    //设置前进指针和跨度
     for (i = 0; i < zsl->level; i++) {
-        if (update[i]->level[i].forward == x) {
+        if (update[i]->level[i].forward == x) {//找到该节点
+            //+ ((该节点跨度)-1)
             update[i]->level[i].span += x->level[i].span - 1;
             update[i]->level[i].forward = x->level[i].forward;
-        } else {
+        } else {//在第i层没找到 只将该层的最后一个节点的跨度减1
             update[i]->level[i].span -= 1;
         }
     }
@@ -422,6 +446,8 @@ unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned 
  * Returns 0 when the element cannot be found, rank otherwise.
  * Note that the rank is 1-based due to the span of zsl->header to the
  * first element. */
+
+// 获取节点排名
 unsigned long zslGetRank(zskiplist *zsl, double score, robj *o) {
     zskiplistNode *x;
     unsigned long rank = 0;
