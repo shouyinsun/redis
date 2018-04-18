@@ -46,11 +46,7 @@ typedef struct intset {
 } intset;
 
 
-/****
-#define INTSET_ENC_INT16 (sizeof(int16_t))   //16位,2个字节,表示范围-32768~32767
-#define INTSET_ENC_INT32 (sizeof(int32_t))   //32位,4个字节,表示范围-2147483648~2147483647
-#define INTSET_ENC_INT64 (sizeof(int64_t))   //64位,8个字节,表示范围-9223372036854775808~9223372036854775807
-****/
+
 
 
 intset *intsetNew(void);
