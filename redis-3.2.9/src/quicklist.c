@@ -1346,9 +1346,9 @@ void quicklistRotate(quicklist *quicklist) {
  * Return value of 0 means no elements available.
  * Return value of 1 means check 'data' and 'sval' for values.
  * If 'data' is set, use 'data' and 'sz'.  Otherwise, use 'sval'. */
-//从quicklist的头节点或尾节点pop弹出出一个entry，并将value保存在传入传出参数
+//从quicklist的头节点或尾节点pop弹出出一个entry,并将value保存在传入传出参数
 //返回0表示没有可pop出的entry
-//返回1表示pop出了entry，存在data或sval中
+//返回1表示pop出了entry,存在data或sval中
 //如果元素是字符串,通过函数指针saver给data赋值,如果元素是number,值在sval中
 int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,

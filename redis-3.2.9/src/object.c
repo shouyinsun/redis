@@ -36,20 +36,22 @@
 #define strtold(a,b) ((long double)strtod((a),(b)))
 #endif
 
+//创建 编码为OBJ_ENCODING_RAW 的redisObject
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
     o->encoding = OBJ_ENCODING_RAW;
     o->ptr = ptr;
-    o->refcount = 1;
+    o->refcount = 1; //引用计数为1
 
     /* Set the LRU to the current lruclock (minutes resolution). */
-    o->lru = LRU_CLOCK();
+    o->lru = LRU_CLOCK();//计算设置当前LRU时间
     return o;
 }
 
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
+//创建一个raw String对象
 robj *createRawStringObject(const char *ptr, size_t len) {
     return createObject(OBJ_STRING,sdsnewlen(ptr,len));
 }
@@ -57,24 +59,25 @@ robj *createRawStringObject(const char *ptr, size_t len) {
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
+//创建一个embstr编码的字符串对象
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
-    robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
-    struct sdshdr8 *sh = (void*)(o+1);
+    robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);//分配空间
+    struct sdshdr8 *sh = (void*)(o+1);//o+1刚好就刚刚分配的struct sdshdr8的地址
 
-    o->type = OBJ_STRING;
+    o->type = OBJ_STRING;//OBJ_STRING
     o->encoding = OBJ_ENCODING_EMBSTR;
-    o->ptr = sh+1;
-    o->refcount = 1;
+    o->ptr = sh+1;//ptr指向分配的len空间的起始位置
+    o->refcount = 1;//引用计数为1
     o->lru = LRU_CLOCK();
 
     sh->len = len;
     sh->alloc = len;
     sh->flags = SDS_TYPE_8;
     if (ptr) {
-        memcpy(sh->buf,ptr,len);
-        sh->buf[len] = '\0';
+        memcpy(sh->buf,ptr,len);//将传进来的ptr保存到对象中
+        sh->buf[len] = '\0';//尾0
     } else {
-        memset(sh->buf,0,len+1);
+        memset(sh->buf,0,len+1);//对象的空间初始化为0
     }
     return o;
 }
@@ -85,6 +88,11 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  *
  * The current limit of 39 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
+
+// 创建字符串对象,根据长度使用不同的编码类型
+// createRawStringObject和createEmbeddedStringObject的区别是：
+// createRawStringObject是当字符串长度大于44字节时,robj结构和sdshdr结构在内存上是分开的
+// createEmbeddedStringObject是当字符串长度小于等于44字节时,robj结构和sdshdr结构在内存上是连续的
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
@@ -160,6 +168,8 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
  * will always result in a fresh object that is unshared (refcount == 1).
  *
  * The resulting object always has refcount set to 1. */
+
+//string 对象的复制,创建的对象非共享 refcount=1
 robj *dupStringObject(robj *o) {
     robj *d;
 
@@ -181,6 +191,7 @@ robj *dupStringObject(robj *o) {
     }
 }
 
+//创建Quicklist对象
 robj *createQuicklistObject(void) {
     quicklist *l = quicklistCreate();
     robj *o = createObject(OBJ_LIST,l);
@@ -188,6 +199,7 @@ robj *createQuicklistObject(void) {
     return o;
 }
 
+//创建ziplist对象
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_LIST,zl);
@@ -195,6 +207,7 @@ robj *createZiplistObject(void) {
     return o;
 }
 
+//创建Set对象
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
@@ -202,6 +215,7 @@ robj *createSetObject(void) {
     return o;
 }
 
+//创建intset对象
 robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
@@ -292,13 +306,13 @@ void freeHashObject(robj *o) {
     }
 }
 
-void incrRefCount(robj *o) {
+void incrRefCount(robj *o) {//引用计数+1
     o->refcount++;
 }
 
-void decrRefCount(robj *o) {
+void decrRefCount(robj *o) {//引用计数-1
     if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
-    if (o->refcount == 1) {
+    if (o->refcount == 1) {//当前引用计数为1,-1为0,直接释放对象
         switch(o->type) {
         case OBJ_STRING: freeStringObject(o); break;
         case OBJ_LIST: freeListObject(o); break;
@@ -356,6 +370,7 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
 }
 
 /* Try to encode a string object in order to save space */
+//尝试优化字符串对象的编码方式以节约空间
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
@@ -365,23 +380,27 @@ robj *tryObjectEncoding(robj *o) {
      * in this function. Other types use encoded memory efficient
      * representations but are handled by the commands implementing
      * the type. */
+    //type 为 OBJ_STRING
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
 
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
      * in represented by an actually array of chars. */
+    //encoding == OBJ_ENCODING_RAW || encoding == OBJ_ENCODING_EMBSTR
     if (!sdsEncodedObject(o)) return o;
 
     /* It's not safe to encode shared objects: shared objects can be shared
      * everywhere in the "object space" of Redis and may end in places where
      * they are not handled. We handle them only as values in the keyspace. */
+
+     //如果refcount大于1,则说明对象的ptr指向的值是共享的,不对共享对象进行编码
      if (o->refcount > 1) return o;
 
     /* Check if we can represent this string as a long integer.
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */
-    len = sdslen(s);
-    if (len <= 20 && string2l(s,len,&value)) {
+    len = sdslen(s);//获得字符串s的长度
+    if (len <= 20 && string2l(s,len,&value)) {//可以转换为long类型的字符串
         /* This object is encodable as a long. Try to use a shared object.
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
@@ -390,14 +409,14 @@ robj *tryObjectEncoding(robj *o) {
              (server.maxmemory_policy != MAXMEMORY_VOLATILE_LRU &&
               server.maxmemory_policy != MAXMEMORY_ALLKEYS_LRU)) &&
             value >= 0 &&
-            value < OBJ_SHARED_INTEGERS)
+            value < OBJ_SHARED_INTEGERS)//value处于共享整数的范围内
         {
-            decrRefCount(o);
-            incrRefCount(shared.integers[value]);
-            return shared.integers[value];
-        } else {
-            if (o->encoding == OBJ_ENCODING_RAW) sdsfree(o->ptr);
-            o->encoding = OBJ_ENCODING_INT;
+            decrRefCount(o); //原对象的引用计数减1,释放对象
+            incrRefCount(shared.integers[value]);//增加共享对象的引用计数
+            return shared.integers[value];//返回一个编码为整数的字符串对象
+        } else {//不处于共享整数的范围
+            if (o->encoding == OBJ_ENCODING_RAW) sdsfree(o->ptr);//释放编码为OBJ_ENCODING_RAW的对象
+            o->encoding = OBJ_ENCODING_INT;//转换为OBJ_ENCODING_INT编码
             o->ptr = (void*) value;
             return o;
         }
@@ -407,12 +426,13 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
+     //如果len小于44,44是最大的编码为EMBSTR类型的字符串对象长度
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
         robj *emb;
-
+        //将RAW对象转换为OBJ_ENCODING_EMBSTR编码类型
         if (o->encoding == OBJ_ENCODING_EMBSTR) return o;
         emb = createEmbeddedStringObject(s,sdslen(s));
-        decrRefCount(o);
+        decrRefCount(o);//原对象的引用计数减1
         return emb;
     }
 
@@ -425,6 +445,7 @@ robj *tryObjectEncoding(robj *o) {
      * We do that only for relatively large strings as this branch
      * is only entered if the length of the string is greater than
      * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
+    //是OBJ_ENCODING_RAW编码 但是可用空间大于使用空间的1/10,释放可用空间
     if (o->encoding == OBJ_ENCODING_RAW &&
         sdsavail(s) > len/10)
     {
@@ -437,6 +458,8 @@ robj *tryObjectEncoding(robj *o) {
 
 /* Get a decoded version of an encoded object (returned as a new object).
  * If the object is already raw-encoded just increment the ref count. */
+
+//将对象是整型的解码为字符串并返回,如果是字符串编码则直接返回输入对象,只需增加引用计数
 robj *getDecodedObject(robj *o) {
     robj *dec;
 

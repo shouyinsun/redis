@@ -464,13 +464,39 @@ typedef long long mstime_t; /* millisecond time type. */
 #define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 typedef struct redisObject {
     // ：位域  一般用在结构体中来减少占用的内存空间
+    //对象的数据类型,占4bits,共5种类型
     unsigned type:4;
+    //对象的编码类型,占4bits,共10种类型
     unsigned encoding:4;//编码
+    //least recently used
     //LRU时间
     unsigned lru:LRU_BITS; /* lru time (relative to server.lruclock) */
+    //引用计数
     int refcount;
+     //指向底层数据实现的指针
     void *ptr;
 } robj;
+
+// type的占5种类型:
+//  OBJ_STRING 0    //字符串对象
+//  OBJ_LIST 1      //列表对象
+//  OBJ_SET 2       //集合对象
+//  OBJ_ZSET 3      //有序集合对象
+//  OBJ_HASH 4      //哈希对象
+
+
+// encoding 的10种类型:
+//  OBJ_ENCODING_RAW 0          //原始表示方式,字符串对象是简单动态字符串
+//  OBJ_ENCODING_INT 1            //long类型的整数
+//  OBJ_ENCODING_HT 2          //字典
+//  OBJ_ENCODING_ZIPMAP 3           //不再使用
+//  OBJ_ENCODING_LINKEDLIST 4  //双端链表,不再使用
+//  OBJ_ENCODING_ZIPLIST 5        //压缩列表
+//  OBJ_ENCODING_INTSET 6          //整数集合
+//  OBJ_ENCODING_SKIPLIST 7        //跳跃表和字典
+//  OBJ_ENCODING_EMBSTR 8    //embstr编码的简单动态字符串
+//  OBJ_ENCODING_QUICKLIST 9    //由压缩列表组成的双向列表-->快速列表
+
 
 /* Macro used to obtain the current LRU clock.
  * If the current resolution is lower than the frequency we refresh the
@@ -624,6 +650,8 @@ struct saveparam {
     int changes;
 };
 
+
+//共享对象
 struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
     *colon, *nullbulk, *nullmultibulk, *queued,
