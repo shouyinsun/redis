@@ -34,6 +34,11 @@
  * either the BSD or the GPL.
  */
 
+/**
+ * lzf解压
+ * 
+ * **/
+
 #include "lzfP.h"
 
 #if AVOID_ERRNO

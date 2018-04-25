@@ -104,7 +104,7 @@
 
 /**
  * 压缩列表(ziplist)是哈希键的底层实现之一
- * 它是经过特殊编码的双向链表
+ * 经过特殊编码
  * 和整数集合(intset)一样,是为了提高内存的存储效率而设计的
  * 当保存的对象是小整数值,或者是长度较短的字符串,那么redis就会使用压缩列表来作为哈希键的实现
  * **/
@@ -551,6 +551,9 @@ unsigned char *ziplistResize(unsigned char *zl, unsigned int len) {
  * updated, i.e. consecutive fields MAY need an update. */
 
 /*
+ *
+ *连锁更新   cascadeUpdate
+ *
  * 当将一个新节点添加到某个节点之前的时候,
  * 如果原节点的 header 空间不足以保存新节点的长度,
  * 那么就需要对原节点的 header 空间进行扩展（从 1 字节扩展到 5 字节）。

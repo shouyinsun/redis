@@ -28,11 +28,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/***
+ * 由ziplist组成的双向链表
+ * ***/
+
 #ifndef __QUICKLIST_H__
 #define __QUICKLIST_H__
 
 /* Node, quicklist, and Iterator are the only data structures used currently. */
 
+//位域
 /* quicklistNode is a 32 byte struct describing a ziplist for a quicklist.
  * We use bit fields keep the quicklistNode at 32 bytes.
  * count: 16 bits, max 65536 (max zl bytes is 65k, so max count actually < 32k).
@@ -44,13 +50,22 @@
 typedef struct quicklistNode {
     struct quicklistNode *prev;
     struct quicklistNode *next;
+    //不设置压缩数据参数recompress指向一个ziplist结构
+    //设置压缩数据参数recompress指向quicklistLZF结构
     unsigned char *zl;
+    //压缩列表ziplist的总长度
     unsigned int sz;             /* ziplist size in bytes */
+    //ziplist中的节点数,占16 bits长度
     unsigned int count : 16;     /* count of items in ziplist */
+    //表示是否采用了LZF压缩算法压缩quicklist节点 占2 bits长度
     unsigned int encoding : 2;   /* RAW==1 or LZF==2 */
+    //表示一个quicklistNode节点是否采用ziplist结构保存数据,2表示压缩了,1表示没压缩,默认是2,占2bits长度
     unsigned int container : 2;  /* NONE==1 or ZIPLIST==2 */
+    //标记quicklist节点的ziplist之前是否被解压缩过,占1bit长度
+    //如果recompress为1,则等待被再次压缩
     unsigned int recompress : 1; /* was this node previous compressed? */
     unsigned int attempted_compress : 1; /* node can't compress; too small */
+    //额外扩展位,占10bits长度
     unsigned int extra : 10; /* more bits to steal for future usage */
 } quicklistNode;
 
@@ -59,8 +74,11 @@ typedef struct quicklistNode {
  * 'compressed' is LZF data with total (compressed) length 'sz'
  * NOTE: uncompressed length is stored in quicklistNode->sz.
  * When quicklistNode->zl is compressed, node->zl points to a quicklistLZF */
+//当使用lzf压缩算法压缩ziplist的entry节点时 quicklistNode结构的zl成员指向quicklistLZF结构
 typedef struct quicklistLZF {
+    //表示被LZF算法压缩后的ziplist的大小
     unsigned int sz; /* LZF size in bytes*/
+    //保存压缩后的ziplist的数组,柔性数组
     char compressed[];
 } quicklistLZF;
 
@@ -73,28 +91,37 @@ typedef struct quicklistLZF {
 typedef struct quicklist {
     quicklistNode *head;
     quicklistNode *tail;
+    //所有ziplist中的entry节点计数器
     unsigned long count;        /* total count of all entries in all ziplists */
+    //quicklist的quicklistNode节点计数器
     unsigned int len;           /* number of quicklistNodes */
+     //保存ziplist的大小 配置文件设定  list-max-ziplist-size  redis.conf文件中设定
     int fill : 16;              /* fill factor for individual nodes */
+     //保存压缩程度值 配置文件设定  list-compress-depth  redis.conf文件中设定 0不压缩
     unsigned int compress : 16; /* depth of end nodes not to compress;0=off */
 } quicklist;
 
+//quicklist的迭代器
 typedef struct quicklistIter {
     const quicklist *quicklist;
     quicklistNode *current;
+    //当前quicklist节点中迭代的ziplist
     unsigned char *zi;
+    //当前ziplist结构中的偏移量
     long offset; /* offset in current ziplist */
+    //迭代方向
     int direction;
 } quicklistIter;
 
+//管理quicklist中quicklistNode节点中ziplist信息的结构
 typedef struct quicklistEntry {
     const quicklist *quicklist;
     quicklistNode *node;
-    unsigned char *zi;
-    unsigned char *value;
-    long long longval;
-    unsigned int sz;
-    int offset;
+    unsigned char *zi;//指向当前ziplist结构的指针
+    unsigned char *value;//指向当前ziplist结构的字符串vlaue成员
+    long long longval;//指向当前ziplist结构的整数value成员
+    unsigned int sz;//保存当前ziplist结构的字节数大小
+    int offset; //保存相对ziplist的偏移量
 } quicklistEntry;
 
 #define QUICKLIST_HEAD 0

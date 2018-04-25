@@ -34,6 +34,11 @@
  * either the BSD or the GPL.
  */
 
+
+
+/**
+ * lzf 压缩
+ ***/ 
 #include "lzfP.h"
 
 #define HSIZE (1 << (HLOG))
