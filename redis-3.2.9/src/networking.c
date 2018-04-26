@@ -559,6 +559,7 @@ void addReplyBulkLen(client *c, robj *obj) {
 void addReplyBulk(client *c, robj *obj) {
     addReplyBulkLen(c,obj);
     addReply(c,obj);
+    //回车换行
     addReply(c,shared.crlf);
 }
 

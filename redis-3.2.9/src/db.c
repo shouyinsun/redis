@@ -189,6 +189,7 @@ void setKey(redisDb *db, robj *key, robj *val) {
     }
     incrRefCount(val);
     removeExpire(db,key);
+    //当数据库的键被改动，则会调用该函数发送信号
     signalModifiedKey(db,key);
 }
 

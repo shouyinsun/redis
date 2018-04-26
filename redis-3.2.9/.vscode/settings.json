@@ -4,6 +4,7 @@
         "zmalloc.h": "c",
         "config.h": "c",
         "math.h": "c",
-        "server.h": "c"
+        "server.h": "c",
+        "util.h": "c"
     }
 }

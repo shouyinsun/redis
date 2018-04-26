@@ -58,12 +58,18 @@ static int checkStringLength(client *c, long long size) {
  * If ok_reply is NULL "+OK" is used.
  * If abort_reply is NULL, "$-1" is used. */
 
+//ok_reply和abort_reply保存着回复client的内容
+//如果ok_reply为空,则使用 "+OK"
+//如果abort_reply为空,则使用 "$-1"
+
 #define OBJ_SET_NO_FLAGS 0
 #define OBJ_SET_NX (1<<0)     /* Set if key not exists. */
 #define OBJ_SET_XX (1<<1)     /* Set if key exists. */
 #define OBJ_SET_EX (1<<2)     /* Set if time in seconds is given */
 #define OBJ_SET_PX (1<<3)     /* Set if time in ms in given */
 
+
+//set 命令
 void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
@@ -74,21 +80,33 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
             addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
             return;
         }
+        //unit的单位是秒需要转换为毫秒保存
         if (unit == UNIT_SECONDS) milliseconds *= 1000;
     }
 
+    //lookupKeyWrite函数是为执行写操作而取出key的值对象
     if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
         (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
     {
+        //条件不符合 回复abort_reply给client
         addReply(c, abort_reply ? abort_reply : shared.nullbulk);
         return;
     }
+    //在当前db设置键为key的值为val
     setKey(c->db,key,val);
+    //设置数据库为脏(dirty),服务器每次修改一个key后,都会对脏键(dirty)增1
     server.dirty++;
+    
+    //设置key的过期时间
+    //mstime()返回毫秒为单位的格林威治时间
     if (expire) setExpire(c->db,key,mstime()+milliseconds);
+    //发送"set"事件的通知,用于发布订阅模式,通知客户端接受发生的事件
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
+    //发送"expire"事件通知
     if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
         "expire",key,c->db->id);
+
+    //设置成功,则向客户端发送ok_reply
     addReply(c, ok_reply ? ok_reply : shared.ok);
 }
 
@@ -154,17 +172,20 @@ void psetexCommand(client *c) {
     setGenericCommand(c,OBJ_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
 }
 
+//GET 命令
 int getGenericCommand(client *c) {
     robj *o;
 
+    //lookupKeyReadOrReply函数是为执行读操作而返回key的值对象,找到返回该对象,找不到会发送信息给client
+    //如果key不存在直接 返回 0 表示GET命令执行成功
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL)
         return C_OK;
 
-    if (o->type != OBJ_STRING) {
-        addReply(c,shared.wrongtypeerr);
-        return C_ERR;
+    if (o->type != OBJ_STRING) {//不是字符串
+        addReply(c,shared.wrongtypeerr); //返回类型错误的信息给client
+        return C_ERR;//返回-1,表示命令执行失败
     } else {
-        addReplyBulk(c,o);
+        addReplyBulk(c,o);//将找到的对象返给client,返回 0 表示执行成功
         return C_OK;
     }
 }
@@ -338,12 +359,17 @@ void msetnxCommand(client *c) {
     msetGenericCommand(c,1);
 }
 
+
+//INCR和DECR命令
 void incrDecrCommand(client *c, long long incr) {
     long long value, oldvalue;
     robj *o, *new;
 
+    //以写操作获取key的value对象
     o = lookupKeyWrite(c->db,c->argv[1]);
+    //不是string类型,return
     if (o != NULL && checkType(c,o,OBJ_STRING)) return;
+    //string转化成long,不能转换,return
     if (getLongLongFromObjectOrReply(c,o,&value,NULL) != C_OK) return;
 
     oldvalue = value;
@@ -354,25 +380,31 @@ void incrDecrCommand(client *c, long long incr) {
     }
     value += incr;
 
+    //value对象目前非共享,编码为整型类型,且新value值不在共享范围,且value处于long类型所表示的范围内
     if (o && o->refcount == 1 && o->encoding == OBJ_ENCODING_INT &&
         (value < 0 || value >= OBJ_SHARED_INTEGERS) &&
         value >= LONG_MIN && value <= LONG_MAX)
     {
         new = o;
-        o->ptr = (void*)((long)value);
-    } else {
+        o->ptr = (void*)((long)value);//设置vlaue对象的值
+    } else {//不满足以上任意条件,则新创建一个字符串对象
         new = createStringObjectFromLongLong(value);
-        if (o) {
-            dbOverwrite(c->db,c->argv[1],new);
-        } else {
-            dbAdd(c->db,c->argv[1],new);
+        if (o) {//存在对象
+            dbOverwrite(c->db,c->argv[1],new);//用new对象去重写key的值
+        } else {//不存在,添加一个新的key-value对
+            dbAdd(c->db,c->argv[1],new); 
         }
     }
+    //当数据库的键被改动,则会调用该函数发送信号
     signalModifiedKey(c->db,c->argv[1]);
+    //发送"incrby"事件通知
     notifyKeyspaceEvent(NOTIFY_STRING,"incrby",c->argv[1],c->db->id);
+    //设置脏键
     server.dirty++;
+    //回复信息给client
     addReply(c,shared.colon);
     addReply(c,new);
+    //crlf 回车换行
     addReply(c,shared.crlf);
 }
 
@@ -432,12 +464,13 @@ void incrbyfloatCommand(client *c) {
     rewriteClientCommandArgument(c,2,new);
 }
 
+//append命令
 void appendCommand(client *c) {
     size_t totlen;
     robj *o, *append;
 
     o = lookupKeyWrite(c->db,c->argv[1]);
-    if (o == NULL) {
+    if (o == NULL) {//不存在则添加一个 key/value 对
         /* Create the key */
         c->argv[2] = tryObjectEncoding(c->argv[2]);
         dbAdd(c->db,c->argv[1],c->argv[2]);
@@ -455,11 +488,13 @@ void appendCommand(client *c) {
             return;
 
         /* Append the value */
+        //因为要根据value修改key的值,因此如果key原来的值是共享的,需要解除共享,新创建一个值对象与key组对
         o = dbUnshareStringValue(c->db,c->argv[1],o);
         o->ptr = sdscatlen(o->ptr,append->ptr,sdslen(append->ptr));
         totlen = sdslen(o->ptr);
     }
     signalModifiedKey(c->db,c->argv[1]);
+    //发送"append"事件通知
     notifyKeyspaceEvent(NOTIFY_STRING,"append",c->argv[1],c->db->id);
     server.dirty++;
     addReplyLongLong(c,totlen);

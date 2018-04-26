@@ -531,10 +531,15 @@ struct evictionPoolEntry {
 /* Redis database representation. There are multiple databases identified
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
+
+
+//redisDb 结构
 typedef struct redisDb {
     dict *dict;                 /* The keyspace for this DB */
-    dict *expires;              /* Timeout of keys with a timeout set */
+    dict *expires;   
+    //正处于阻塞状态的键           /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP) */
+    //可以解除阻塞的键
     dict *ready_keys;           /* Blocked keys that received a PUSH */
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
     struct evictionPoolEntry *eviction_pool;    /* Eviction pool of keys */
@@ -558,14 +563,19 @@ typedef struct multiState {
 
 /* This structure holds the blocking operation state for a client.
  * The fields used depend on client->btype. */
+
+//阻塞状态信息
 typedef struct blockingState {
     /* Generic fields. */
+    //阻塞的时间
     mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
                              * is > timeout then the operation timed out. */
 
     /* BLOCKED_LIST */
+    //造成阻塞的键
     dict *keys;             /* The keys we are waiting to terminate a blocking
                              * operation such as BLPOP. Otherwise NULL. */
+    //用于保存PUSH入元素的键，也就是dstkey                        
     robj *target;           /* The key that should receive the element,
                              * for BRPOPLPUSH. */
 
@@ -592,9 +602,11 @@ typedef struct readyList {
 
 /* With multiplexing we need to take per-client state.
  * Clients are taken in a linked list. */
+//redis client
 typedef struct client {
     uint64_t id;            /* Client incremental unique ID. */
     int fd;                 /* Client socket. */
+    //client当前使用的数据库
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     int dictid;             /* ID of the currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
@@ -633,6 +645,7 @@ typedef struct client {
     int slave_capa;         /* Slave capabilities: SLAVE_CAPA_* bitwise OR. */
     multiState mstate;      /* MULTI/EXEC state */
     int btype;              /* Type of blocking op if CLIENT_BLOCKED. */
+    //阻塞状态
     blockingState bpop;     /* blocking state */
     long long woff;         /* Last write global replication offset. */
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
@@ -1054,18 +1067,22 @@ typedef struct _redisSortOperation {
 } redisSortOperation;
 
 /* Structure to hold list iteration abstraction. */
+
 typedef struct {
-    robj *subject;
-    unsigned char encoding;
+    robj *subject;//迭代器指向的对象
+    unsigned char encoding;//迭代器指向对象的编码类型
+    //迭代器的方向
     unsigned char direction; /* Iteration direction */
+    //quicklist的迭代器
     quicklistIter *iter;
-} listTypeIterator;
+} listTypeIterator;//列表类型迭代器
 
 /* Structure for an entry while iterating over a list. */
 typedef struct {
-    listTypeIterator *li;
+    listTypeIterator *li;//所属的列表类型迭代器
+    //quicklist中的quicklistEntry结构s
     quicklistEntry entry; /* Entry in quicklist */
-} listTypeEntry;
+} listTypeEntry;//列表节点信息的结构
 
 /* Structure to hold set iteration abstraction. */
 typedef struct {
