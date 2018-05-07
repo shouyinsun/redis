@@ -30,6 +30,22 @@
 #include "server.h"
 #include <math.h>
 
+
+/***
+ * 哈希类型的对象
+ * 
+ * 哈希类型的对象的编码有两种:OBJ_ENCODING_ZIPLIST和OBJ_ENCODING_HT
+ * 默认创建的哈希类型的对象编码为OBJ_ENCODING_ZIPLIST,OBJ_ENCODING_HT类型编码是通过达到配置的阈值条件后,进行转换得到的。
+
+    阈值条件为：
+    //redis.conf文件中的阈值 
+    hash-max-ziplist-value 64 // ziplist中最大能存放的值长度
+    hash-max-ziplist-entries 512 // ziplist中最多能存放的entry节点数量
+ * 
+ * 
+ * ***/
+
+
 /*-----------------------------------------------------------------------------
  * Hash type API
  *----------------------------------------------------------------------------*/
@@ -37,6 +53,8 @@
 /* Check the length of a number of objects to see if we need to convert a
  * ziplist to a real hash. Note that we only check string encoded objects
  * as their string length can be queried in constant time. */
+
+// 检查一个数字对象的长度判断是否需要进行类型的转换 从ziplist转换到ht类型
 void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
     int i;
 
@@ -53,6 +71,7 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
 }
 
 /* Encode given objects in-place when the hash uses a dict. */
+//如果使用dict进行编码,对key和value进行编码以节约内存
 void hashTypeTryObjectEncoding(robj *subject, robj **o1, robj **o2) {
     if (subject->encoding == OBJ_ENCODING_HT) {
         if (o1) *o1 = tryObjectEncoding(*o1);
@@ -115,6 +134,8 @@ int hashTypeGetFromHashTable(robj *o, robj *field, robj **value) {
  *
  * The lower level function can prevent copy on write so it is
  * the preferred way of doing read operations. */
+
+//从一个哈希对象中返回field对应的值对象
 robj *hashTypeGetObject(robj *o, robj *field) {
     robj *value = NULL;
 
@@ -168,6 +189,7 @@ size_t hashTypeGetValueLength(robj *o, robj *field) {
 
 /* Test if the specified field exists in the given hash. Returns 1 if the field
  * exists, and 0 when it doesn't. */
+//判断field是否存在
 int hashTypeExists(robj *o, robj *field) {
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
         unsigned char *vstr = NULL;
@@ -243,6 +265,7 @@ int hashTypeSet(robj *o, robj *field, robj *value) {
 
 /* Delete an element from a hash.
  * Return 1 on deleted and 0 on not found. */
+//删除field 1成功 0没有对应的field
 int hashTypeDelete(robj *o, robj *field) {
     int deleted = 0;
 
@@ -281,6 +304,7 @@ int hashTypeDelete(robj *o, robj *field) {
 }
 
 /* Return the number of elements in a hash. */
+//哈希对象中键值对的个数
 unsigned long hashTypeLength(robj *o) {
     unsigned long length = ULONG_MAX;
 
@@ -295,15 +319,16 @@ unsigned long hashTypeLength(robj *o) {
     return length;
 }
 
+//初始化哈希类型的迭代器
 hashTypeIterator *hashTypeInitIterator(robj *subject) {
     hashTypeIterator *hi = zmalloc(sizeof(hashTypeIterator));
     hi->subject = subject;
     hi->encoding = subject->encoding;
 
-    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {//ziplist编码
         hi->fptr = NULL;
         hi->vptr = NULL;
-    } else if (hi->encoding == OBJ_ENCODING_HT) {
+    } else if (hi->encoding == OBJ_ENCODING_HT) {//dict编码
         hi->di = dictGetIterator(subject->ptr);
     } else {
         serverPanic("Unknown hash encoding");
@@ -312,7 +337,9 @@ hashTypeIterator *hashTypeInitIterator(robj *subject) {
     return hi;
 }
 
+//释放
 void hashTypeReleaseIterator(hashTypeIterator *hi) {
+     // 如果是字典,则需要先释放字典迭代器的空间
     if (hi->encoding == OBJ_ENCODING_HT) {
         dictReleaseIterator(hi->di);
     }
@@ -322,16 +349,18 @@ void hashTypeReleaseIterator(hashTypeIterator *hi) {
 
 /* Move to the next entry in the hash. Return C_OK when the next entry
  * could be found and C_ERR when the iterator reaches the end. */
+
+//哈希类型迭代器指向下一节点
 int hashTypeNext(hashTypeIterator *hi) {
-    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {//ziplist
         unsigned char *zl;
         unsigned char *fptr, *vptr;
 
-        zl = hi->subject->ptr;
+        zl = hi->subject->ptr;//备份迭代器的成员信息
         fptr = hi->fptr;
         vptr = hi->vptr;
 
-        if (fptr == NULL) {
+        if (fptr == NULL) {//第一次,指向第一个entry
             /* Initialize cursor */
             serverAssert(vptr == NULL);
             fptr = ziplistIndex(zl, 0);
@@ -340,6 +369,7 @@ int hashTypeNext(hashTypeIterator *hi) {
             serverAssert(vptr != NULL);
             fptr = ziplistNext(zl, vptr);
         }
+        // 迭代完毕返回C_ERR
         if (fptr == NULL) return C_ERR;
 
         /* Grab pointer to the value (fptr points to the field) */
@@ -349,7 +379,7 @@ int hashTypeNext(hashTypeIterator *hi) {
         /* fptr, vptr now point to the first or next pair */
         hi->fptr = fptr;
         hi->vptr = vptr;
-    } else if (hi->encoding == OBJ_ENCODING_HT) {
+    } else if (hi->encoding == OBJ_ENCODING_HT) {//dict 字典
         if ((hi->de = dictNext(hi->di)) == NULL) return C_ERR;
     } else {
         serverPanic("Unknown hash encoding");
@@ -359,6 +389,7 @@ int hashTypeNext(hashTypeIterator *hi) {
 
 /* Get the field or value at iterator cursor, for an iterator on a hash value
  * encoded as a ziplist. Prototype is similar to `hashTypeGetFromZiplist`. */
+// 从ziplist类型的哈希类型迭代器中获取对应的field或value
 void hashTypeCurrentFromZiplist(hashTypeIterator *hi, int what,
                                 unsigned char **vstr,
                                 unsigned int *vlen,
@@ -368,10 +399,10 @@ void hashTypeCurrentFromZiplist(hashTypeIterator *hi, int what,
 
     serverAssert(hi->encoding == OBJ_ENCODING_ZIPLIST);
 
-    if (what & OBJ_HASH_KEY) {
+    if (what & OBJ_HASH_KEY) {//key
         ret = ziplistGet(hi->fptr, vstr, vlen, vll);
         serverAssert(ret);
-    } else {
+    } else {//value
         ret = ziplistGet(hi->vptr, vstr, vlen, vll);
         serverAssert(ret);
     }
@@ -379,6 +410,8 @@ void hashTypeCurrentFromZiplist(hashTypeIterator *hi, int what,
 
 /* Get the field or value at iterator cursor, for an iterator on a hash value
  * encoded as a ziplist. Prototype is similar to `hashTypeGetFromHashTable`. */
+
+// 从hashTable类型的哈希类型迭代器中获取对应的field或value
 void hashTypeCurrentFromHashTable(hashTypeIterator *hi, int what, robj **dst) {
     serverAssert(hi->encoding == OBJ_ENCODING_HT);
 
@@ -415,6 +448,7 @@ robj *hashTypeCurrentObject(hashTypeIterator *hi, int what) {
     return dst;
 }
 
+//以写操作在数据库中查找对应key的哈希对象 如果不存在则创建
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
     robj *o = lookupKeyWrite(c->db,key);
     if (o == NULL) {
@@ -469,6 +503,7 @@ void hashTypeConvertZiplist(robj *o, int enc) {
     }
 }
 
+// 转换一个哈希对象的编码类型
 void hashTypeConvert(robj *o, int enc) {
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
         hashTypeConvertZiplist(o, enc);
@@ -569,13 +604,18 @@ void hincrbyCommand(client *c) {
     server.dirty++;
 }
 
+//Hincrbyfloat命令
 void hincrbyfloatCommand(client *c) {
     double long value, incr;
     robj *o, *current, *new, *aux;
 
+    // 得到一个long double类型的增量 incr
     if (getLongDoubleFromObjectOrReply(c,c->argv[3],&incr,NULL) != C_OK) return;
+    //写的方式读取哈希对象
     if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
+    //返回field在哈希对象o中的值对象
     if ((current = hashTypeGetObject(o,c->argv[2])) != NULL) {
+        //从值对象中得到一个long double类型的value,如果不是浮点,则返回client异常
         if (getLongDoubleFromObjectOrReply(c,current,&value,
             "hash value is not a valid float") != C_OK) {
             decrRefCount(current);
@@ -587,10 +627,15 @@ void hincrbyfloatCommand(client *c) {
     }
 
     value += incr;
+    // 将value转换为字符串类型的对象
     new = createStringObjectFromLongDouble(value,1);
+    //将键和值对象的编码进行优化,以节省空间,是以embstr或raw或整型存储
     hashTypeTryObjectEncoding(o,&c->argv[2],NULL);
+     // 设置原来的key为新的值对象
     hashTypeSet(o,c->argv[2],new);
+     // 讲新的值对象发送给client
     addReplyBulk(c,new);
+     // 修改数据库的键则发送信号,发送"hincrbyfloat"事件通知,更新脏键
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(NOTIFY_HASH,"hincrbyfloat",c->argv[1],c->db->id);
     server.dirty++;
@@ -671,6 +716,7 @@ void hmgetCommand(client *c) {
     }
 }
 
+//hdel命令
 void hdelCommand(client *c) {
     robj *o;
     int j, deleted = 0, keyremoved = 0;
@@ -678,10 +724,11 @@ void hdelCommand(client *c) {
     if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
 
+    // 遍历所有的字段field
     for (j = 2; j < c->argc; j++) {
         if (hashTypeDelete(o,c->argv[j])) {
             deleted++;
-            if (hashTypeLength(o) == 0) {
+            if (hashTypeLength(o) == 0) {//哈希对象length为0,删除该哈希对象
                 dbDelete(c->db,c->argv[1]);
                 keyremoved = 1;
                 break;
@@ -691,7 +738,7 @@ void hdelCommand(client *c) {
     if (deleted) {
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(NOTIFY_HASH,"hdel",c->argv[1],c->db->id);
-        if (keyremoved)
+        if (keyremoved) // 发送"hdel"事件通知
             notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],
                                 c->db->id);
         server.dirty += deleted;
@@ -713,6 +760,7 @@ void hstrlenCommand(client *c) {
 
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
+    // 发送field对象的值的长度给client
     addReplyLongLong(c,hashTypeGetValueLength(o,c->argv[2]));
 }
 
@@ -740,15 +788,19 @@ static void addHashIteratorCursorToReply(client *c, hashTypeIterator *hi, int wh
     }
 }
 
+//Hgetall 命令
 void genericHgetallCommand(client *c, int flags) {
     robj *o;
     hashTypeIterator *hi;
     int multiplier = 0;
     int length, count = 0;
 
+    //读操作读出对象
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk)) == NULL
         || checkType(c,o,OBJ_HASH)) return;
 
+    // 计算一对键值对要返回的个数
+    //flag 1 key   2 value  3 key&value
     if (flags & OBJ_HASH_KEY) multiplier++;
     if (flags & OBJ_HASH_VALUE) multiplier++;
 
@@ -758,10 +810,12 @@ void genericHgetallCommand(client *c, int flags) {
     hi = hashTypeInitIterator(o);
     while (hashTypeNext(hi) != C_ERR) {
         if (flags & OBJ_HASH_KEY) {
+            // 保存当前迭代器指向的键
             addHashIteratorCursorToReply(c, hi, OBJ_HASH_KEY);
             count++;
         }
         if (flags & OBJ_HASH_VALUE) {
+             // 保存当前迭代器指向的值
             addHashIteratorCursorToReply(c, hi, OBJ_HASH_VALUE);
             count++;
         }
@@ -771,14 +825,17 @@ void genericHgetallCommand(client *c, int flags) {
     serverAssert(count == length);
 }
 
+//获取哈希对象所有的key值
 void hkeysCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY);
 }
 
+//获取哈希对象所有的value值
 void hvalsCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_VALUE);
 }
 
+//获取哈希对象的所有的key-value
 void hgetallCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY|OBJ_HASH_VALUE);
 }
@@ -791,6 +848,7 @@ void hexistsCommand(client *c) {
     addReply(c, hashTypeExists(o,c->argv[2]) ? shared.cone : shared.czero);
 }
 
+//Hscan 命令
 void hscanCommand(client *c) {
     robj *o;
     unsigned long cursor;

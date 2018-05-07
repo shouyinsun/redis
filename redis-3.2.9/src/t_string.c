@@ -478,7 +478,7 @@ void appendCommand(client *c) {
         totlen = stringObjectLen(c->argv[2]);
     } else {
         /* Key exists, check type */
-        if (checkType(c,o,OBJ_STRING))
+        if (checkType(c,o,OBJ_STRING))//不是string类型,直接返回
             return;
 
         /* "append" is an argument, so always an sds */

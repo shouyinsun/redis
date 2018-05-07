@@ -134,6 +134,7 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
  * Returns the linked value object if the key exists or NULL if the key
  * does not exist in the specified DB. */
 robj *lookupKeyWrite(redisDb *db, robj *key) {
+    //操作之前,先校验key是否过期
     expireIfNeeded(db,key);
     return lookupKey(db,key,LOOKUP_NONE);
 }
@@ -189,7 +190,7 @@ void setKey(redisDb *db, robj *key, robj *val) {
     }
     incrRefCount(val);
     removeExpire(db,key);
-    //当数据库的键被改动，则会调用该函数发送信号
+    //当数据库的键被改动,则会调用该函数发送信号
     signalModifiedKey(db,key);
 }
 
@@ -489,6 +490,8 @@ int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor) {
  *
  * In the case of a Hash object the function returns both the field and value
  * of every element on the Hash. */
+
+//scan命令
 void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     int i, j;
     list *keys = listCreate();
@@ -894,6 +897,8 @@ void propagateExpire(redisDb *db, robj *key) {
     decrRefCount(argv[1]);
 }
 
+
+//过期操作,删除key
 int expireIfNeeded(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
