@@ -27,6 +27,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/***
+ * 一个集合类型的对象的编码有两种:OBJ_ENCODING_HT和OBJ_ENCODING_INTSET。
+ * 
+ * 编码的转换：
+ * 1.redis的配置文件中的选项：如果数据编码为整数集合的集合对象的元素数量超过 set-max-intset-entries 阈值，则会转换编码
+    set-max-intset-entries  512
+   2.向数据编码为整数集合的集合对象插入字符串类型的对象，则会转换编码
+ * 
+ * **/
 #include "server.h"
 
 /*-----------------------------------------------------------------------------
@@ -39,6 +49,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
 /* Factory method to return a set that *can* hold "value". When the object has
  * an integer-encodable value, an intset will be returned. Otherwise a regular
  * hash table. */
+
+//创建一个可以存放value的set对象
 robj *setTypeCreate(robj *value) {
     if (isObjectRepresentableAsLongLong(value,NULL) == C_OK)
         return createIntsetObject();
@@ -50,6 +62,8 @@ robj *setTypeCreate(robj *value) {
  *
  * If the value was already member of the set, nothing is done and 0 is
  * returned, otherwise the new element is added and 1 is returned. */
+
+//set类型添加value
 int setTypeAdd(robj *subject, robj *value) {
     long long llval;
     if (subject->encoding == OBJ_ENCODING_HT) {
@@ -118,13 +132,14 @@ int setTypeIsMember(robj *subject, robj *value) {
     return 0;
 }
 
+//创建并初始化一个集合类型的迭代器
 setTypeIterator *setTypeInitIterator(robj *subject) {
     setTypeIterator *si = zmalloc(sizeof(setTypeIterator));
     si->subject = subject;
     si->encoding = subject->encoding;
-    if (si->encoding == OBJ_ENCODING_HT) {
+    if (si->encoding == OBJ_ENCODING_HT) {//dict类型,迭代器
         si->di = dictGetIterator(subject->ptr);
-    } else if (si->encoding == OBJ_ENCODING_INTSET) {
+    } else if (si->encoding == OBJ_ENCODING_INTSET) {//intset类型迭代器,为集合下标
         si->ii = 0;
     } else {
         serverPanic("Unknown set encoding");
@@ -132,6 +147,7 @@ setTypeIterator *setTypeInitIterator(robj *subject) {
     return si;
 }
 
+//释放迭代器
 void setTypeReleaseIterator(setTypeIterator *si) {
     if (si->encoding == OBJ_ENCODING_HT)
         dictReleaseIterator(si->di);
@@ -153,6 +169,8 @@ void setTypeReleaseIterator(setTypeIterator *si) {
  * When there are no longer elements -1 is returned.
  * Returned objects ref count is not incremented, so this function is
  * copy on write friendly. */
+
+//将当前迭代器指向的元素保存在objele或llele中，迭代完毕返回-1
 int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
     if (si->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictNext(si->di);
@@ -176,6 +194,9 @@ int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
  *
  * This function is the way to go for write operations where COW is not
  * an issue as the result will be anyway of incrementing the ref count. */
+
+
+//返回迭代器当前指向的元素对象的地址，需要手动释放返回的对象
 robj *setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
     robj *objele;
@@ -183,7 +204,7 @@ robj *setTypeNextObject(setTypeIterator *si) {
 
     encoding = setTypeNext(si,&objele,&intele);
     switch(encoding) {
-        case -1:    return NULL;
+        case -1:    return NULL; //迭代完成
         case OBJ_ENCODING_INTSET:
             return createStringObjectFromLongLong(intele);
         case OBJ_ENCODING_HT:
@@ -212,6 +233,8 @@ robj *setTypeNextObject(setTypeIterator *si) {
  * When an object is returned (the set was a real set) the ref count
  * of the object is not incremented so this function can be considered
  * copy on write friendly. */
+
+// 从集合中随机取出一个对象
 int setTypeRandomElement(robj *setobj, robj **objele, int64_t *llele) {
     if (setobj->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictGetRandomKey(setobj->ptr);
@@ -239,6 +262,8 @@ unsigned long setTypeSize(robj *subject) {
 /* Convert the set to specified encoding. The resulting dict (when converting
  * to a hash table) is presized to hold the number of elements in the original
  * set. */
+
+//集合对象的INTSET编码类型转换为enc类型 ,转换成dict
 void setTypeConvert(robj *setobj, int enc) {
     setTypeIterator *si;
     serverAssertWithInfo(NULL,setobj,setobj->type == OBJ_SET &&
@@ -246,15 +271,19 @@ void setTypeConvert(robj *setobj, int enc) {
 
     if (enc == OBJ_ENCODING_HT) {
         int64_t intele;
+        // 创建一个字典
         dict *d = dictCreate(&setDictType,NULL);
         robj *element;
 
         /* Presize the dict to avoid rehashing */
+        // 扩展字典的大小
         dictExpand(d,intsetLen(setobj->ptr));
 
         /* To add the elements we extract integers and create redis objects */
+        // 创建并初始化一个集合类型的迭代器
         si = setTypeInitIterator(setobj);
         while (setTypeNext(si,&element,&intele) != -1) {
+            //元素转换成string
             element = createStringObjectFromLongLong(intele);
             serverAssertWithInfo(NULL,element,
                                 dictAdd(d,element,NULL) == DICT_OK);
@@ -788,6 +817,8 @@ int qsortCompareSetsByRevCardinality(const void *s1, const void *s2) {
     return  (o2 ? setTypeSize(o2) : 0) - (o1 ? setTypeSize(o1) : 0);
 }
 
+// SINTER、SINTERSTORE一类命令的底层实现
+//多个set的交集
 void sinterGenericCommand(client *c, robj **setkeys,
                           unsigned long setnum, robj *dstkey) {
     robj **sets = zmalloc(sizeof(robj*)*setnum);
@@ -799,18 +830,20 @@ void sinterGenericCommand(client *c, robj **setkeys,
     int encoding;
 
     for (j = 0; j < setnum; j++) {
+        // 如果dstkey为空，则是SINTER命令，不为空则是SINTERSTORE命令
+        // 如果是SINTER命令，则以读操作读取出集合对象，否则以写操作读取出集合对象
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
-        if (!setobj) {
+        if (!setobj) {// 读取的集合对象不存在，执行清理操作
             zfree(sets);
-            if (dstkey) {
+            if (dstkey) { //从数据库中删除存储的目标集合对象dstkey
                 if (dbDelete(c->db,dstkey)) {
                     signalModifiedKey(c->db,dstkey);
                     server.dirty++;
                 }
                 addReply(c,shared.czero);
-            } else {
+            } else {// 如果是SINTER命令，发送空回复
                 addReply(c,shared.emptymultibulk);
             }
             return;
@@ -819,10 +852,13 @@ void sinterGenericCommand(client *c, robj **setkeys,
             zfree(sets);
             return;
         }
+        // 将读取出的对象保存在集合数组中
         sets[j] = setobj;
     }
     /* Sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
+
+    // 从小到大排序集合数组中的集合的大小，能够提高算法的性能
     qsort(sets,setnum,sizeof(robj*),qsortCompareSetsByCardinality);
 
     /* The first thing we should output is the total number of elements...
@@ -830,22 +866,26 @@ void sinterGenericCommand(client *c, robj **setkeys,
      * the intersection set size, so we use a trick, append an empty object
      * to the output list and save the pointer to later modify it with the
      * right length */
+
+    // 首先应该输出集合中元素的数量，但是现在不知道交集的大小
+    // 因此创建一个空对象的链表，然后保存所有的回复
     if (!dstkey) {
-        replylen = addDeferredMultiBulkLength(c);
+        replylen = addDeferredMultiBulkLength(c);// STINER命令创建一个链表
     } else {
         /* If we have a target key where to store the resulting set
          * create this key with an empty set inside */
-        dstset = createIntsetObject();
+        dstset = createIntsetObject();  //STINERSTORE命令创建整数集合对象
     }
 
     /* Iterate all the elements of the first (smallest) set, and test
      * the element against all the other sets, if at least one set does
      * not include the element it is discarded */
-    si = setTypeInitIterator(sets[0]);
+    si = setTypeInitIterator(sets[0]);//cardinality 最小的集合
     while((encoding = setTypeNext(si,&eleobj,&intobj)) != -1) {
+        //cardinality 最小的集合挨个跟其他集合比较
         for (j = 1; j < setnum; j++) {
             if (sets[j] == sets[0]) continue;
-            if (encoding == OBJ_ENCODING_INTSET) {
+            if (encoding == OBJ_ENCODING_INTSET) {// 当前元素为INTSET类型
                 /* intset with intset is simple... and fast */
                 if (sets[j]->encoding == OBJ_ENCODING_INTSET &&
                     !intsetFind((intset*)sets[j]->ptr,intobj))
@@ -880,14 +920,14 @@ void sinterGenericCommand(client *c, robj **setkeys,
         }
 
         /* Only take action when all sets contain the member */
-        if (j == setnum) {
-            if (!dstkey) {
+        if (j == setnum) {//只有在j=setnum时,才是所有集合都有这个元素
+            if (!dstkey) {//如果是SINTER命令，回复集合
                 if (encoding == OBJ_ENCODING_HT)
                     addReplyBulk(c,eleobj);
                 else
                     addReplyBulkLongLong(c,intobj);
                 cardinality++;
-            } else {
+            } else { //如果是SINTERSTORE命令，先将结果添加到集合中，因为还要store到数据库中
                 if (encoding == OBJ_ENCODING_INTSET) {
                     eleobj = createStringObjectFromLongLong(intobj);
                     setTypeAdd(dstset,eleobj);
@@ -900,7 +940,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
     }
     setTypeReleaseIterator(si);
 
-    if (dstkey) {
+    if (dstkey) {// SINTERSTORE命令，要将结果的集合添加到数据库中
         /* Store the resulting set into the target, if the intersection
          * is not an empty set. */
         int deleted = dbDelete(c->db,dstkey);
@@ -918,7 +958,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
         }
         signalModifiedKey(c->db,dstkey);
         server.dirty++;
-    } else {
+    } else {// SINTER命令，回复结果集合给client
         setDeferredMultiBulkLength(c,replylen,cardinality);
     }
     zfree(sets);
@@ -936,8 +976,16 @@ void sinterstoreCommand(client *c) {
 #define SET_OP_DIFF 1
 #define SET_OP_INTER 2
 
+
+// SUNION key [key ...]
+// SUNIONSTORE destination key [key ...]
+// SDIFF key [key ...]
+// SDIFFSTORE destination key [key ...]
+// 并集、差集命令的底层实现
 void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
                               robj *dstkey, int op) {
+
+    //分配集合数组的空间
     robj **sets = zmalloc(sizeof(robj*)*setnum);
     setTypeIterator *si;
     robj *ele, *dstset = NULL;
@@ -945,6 +993,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
     int diff_algo = 1;
 
     for (j = 0; j < setnum; j++) {
+        // 如果dstkey为空，则是SUNION或SDIFF命令，不为空则是SUNIONSTORE或SDIFFSTORE命令
+        // 如果是SUNION或SDIFF命令，则以读操作读取出集合对象，否则以写操作读取出集合对象
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
@@ -968,25 +1018,33 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
      * the sets.
      *
      * We compute what is the best bet with the current input here. */
+    //差集
     if (op == SET_OP_DIFF && sets[0]) {
+        // 计算差集共有两种算法
+        // 1.时间复杂度O(N*M)，N是第一个集合中元素的总个数，M是集合的总个数
+        // 2.时间复杂度O(N)，N是所有集合中元素的总个数
         long long algo_one_work = 0, algo_two_work = 0;
 
         for (j = 0; j < setnum; j++) {
             if (sets[j] == NULL) continue;
-
+            // 计算sets[0] × setnum的值
             algo_one_work += setTypeSize(sets[0]);
+            // 计算所有集合的元素总个数
             algo_two_work += setTypeSize(sets[j]);
         }
 
         /* Algorithm 1 has better constant times and performs less operations
          * if there are elements in common. Give it some advantage. */
         algo_one_work /= 2;
+        //根据algo_one_work和algo_two_work选择不同算法
         diff_algo = (algo_one_work <= algo_two_work) ? 1 : 2;
 
+        //如果是算法1，M较小，执行操作少
         if (diff_algo == 1 && setnum > 1) {
             /* With algorithm 1 it is better to order the sets to subtract
              * by decreasing size, so that we are more likely to find
              * duplicated elements ASAP. */
+            //集合数组除第一个集合以外的所有集合，按照集合的元素Cardinality 倒排序
             qsort(sets+1,setnum-1,sizeof(robj*),
                 qsortCompareSetsByRevCardinality);
         }
@@ -997,10 +1055,11 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
      * this set object will be the resulting object to set into the target key*/
     dstset = createIntsetObject();
 
+    //并集
     if (op == SET_OP_UNION) {
         /* Union is trivial, just add every element of every set to the
          * temporary set. */
-        for (j = 0; j < setnum; j++) {
+        for (j = 0; j < setnum; j++) {// 遍历每一个集合,加入到结果集中
             if (!sets[j]) continue; /* non existing keys are like empty sets */
 
             si = setTypeInitIterator(sets[j]);
@@ -1010,7 +1069,7 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
             }
             setTypeReleaseIterator(si);
         }
-    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 1) {
+    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 1) {//差集,算法1
         /* DIFF Algorithm 1:
          *
          * We perform the diff by iterating all the elements of the first set,
@@ -1019,14 +1078,14 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
          *
          * This way we perform at max N*M operations, where N is the size of
          * the first set, and M the number of sets. */
-        si = setTypeInitIterator(sets[0]);
+        si = setTypeInitIterator(sets[0]);//第一个集合
         while((ele = setTypeNextObject(si)) != NULL) {
             for (j = 1; j < setnum; j++) {
                 if (!sets[j]) continue; /* no key is an empty set. */
                 if (sets[j] == sets[0]) break; /* same set! */
                 if (setTypeIsMember(sets[j],ele)) break;
             }
-            if (j == setnum) {
+            if (j == setnum) {//j==setNum,该值是差集的值
                 /* There is no other set with this element. Add it. */
                 setTypeAdd(dstset,ele);
                 cardinality++;
@@ -1034,7 +1093,7 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
             decrRefCount(ele);
         }
         setTypeReleaseIterator(si);
-    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 2) {
+    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 2) {//差集,算法2
         /* DIFF Algorithm 2:
          *
          * Add all the elements of the first set to the auxiliary set.
@@ -1047,9 +1106,9 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
 
             si = setTypeInitIterator(sets[j]);
             while((ele = setTypeNextObject(si)) != NULL) {
-                if (j == 0) {
+                if (j == 0) {//第一个集合的全部加入
                     if (setTypeAdd(dstset,ele)) cardinality++;
-                } else {
+                } else {//后面的集合的元素从第一个集合中移除
                     if (setTypeRemove(dstset,ele)) cardinality--;
                 }
                 decrRefCount(ele);

@@ -207,7 +207,7 @@ robj *createZiplistObject(void) {
     return o;
 }
 
-//创建Set对象
+//创建dict对象
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
@@ -223,6 +223,7 @@ robj *createIntsetObject(void) {
     return o;
 }
 
+//创建ziplist
 robj *createHashObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_HASH, zl);
@@ -230,6 +231,7 @@ robj *createHashObject(void) {
     return o;
 }
 
+//创建zset
 robj *createZsetObject(void) {
     zset *zs = zmalloc(sizeof(*zs));
     robj *o;

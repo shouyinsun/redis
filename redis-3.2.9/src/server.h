@@ -1088,9 +1088,10 @@ typedef struct {
 typedef struct {
     robj *subject;
     int encoding;
+    //整数集合的迭代器，编码为INTSET使用
     int ii; /* intset iterator */
     dictIterator *di;
-} setTypeIterator;
+} setTypeIterator;//set类型迭代器
 
 /* Structure to hold hash iteration abstraction. Note that iteration over
  * hashes involves both fields and values. Because it is possible that
