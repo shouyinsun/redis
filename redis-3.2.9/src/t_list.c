@@ -676,9 +676,9 @@ void rpoplpushCommand(client *c) {
 
 
 
-// keys是一个key的数组，个数为numkeys个
+// keys是一个key的数组,个数为numkeys个
 // timeout保存超时时间
-// target保存PUSH入元素的键，也就是dstkey，用于BRPOPLPUSH函数
+// target保存PUSH入元素的键,也就是dstkey,用于BRPOPLPUSH函数
 // 根据给定的key将client阻塞
 void blockForKeys(client *c, robj **keys, int numkeys, mstime_t timeout, robj *target) {
     dictEntry *de;
@@ -964,7 +964,7 @@ void blockingPopGenericCommand(client *c, int where) {
         != C_OK) return;
 
 
-    //遍历所有的key，如果key中列表有值，则执行完这个循环一定能直接返回
+    //遍历所有的key,如果key中列表有值,则执行完这个循环一定能直接返回
     for (j = 1; j < c->argc-1; j++) {
         o = lookupKeyWrite(c->db,c->argv[j]);
         if (o != NULL) {
@@ -994,7 +994,7 @@ void blockingPopGenericCommand(client *c, int where) {
                     server.dirty++;
 
                     /* Replicate it as an [LR]POP instead of B[LR]POP. */
-                    // 传播一个[LR]POP 而不是B[LR]POP，修改client原来的命令参数
+                    // 传播一个[LR]POP 而不是B[LR]POP,修改client原来的命令参数
                     rewriteClientCommandVector(c,2,
                         (where == LIST_HEAD) ? shared.lpop : shared.rpop,
                         c->argv[j]);
@@ -1006,7 +1006,7 @@ void blockingPopGenericCommand(client *c, int where) {
 
     /* If we are inside a MULTI/EXEC and the list is empty the only thing
      * we can do is treating it as a timeout (even with timeout 0). */
-    // 如果命令在一个 事务 中执行，则发送一个空回复以避免死等待，因为要执行完整个事务块
+    // 如果命令在一个 事务 中执行,则发送一个空回复以避免死等待,因为要执行完整个事务块
     if (c->flags & CLIENT_MULTI) {
         addReply(c,shared.nullmultibulk);
         return;
@@ -1040,13 +1040,13 @@ void brpoplpushCommand(client *c) {
 
     //key为空 阻塞
     if (key == NULL) {
-        if (c->flags & CLIENT_MULTI) {// 如果命令在一个事务中执行，则发送一个空回复以避免死等待
+        if (c->flags & CLIENT_MULTI) {// 如果命令在一个事务中执行,则发送一个空回复以避免死等待
             /* Blocking against an empty list in a multi state
              * returns immediately. */
             addReply(c, shared.nullbulk);
         } else {
             /* The list is empty and the client blocks. */
-            // 列表为空，则将client阻塞
+            // 列表为空,则将client阻塞
             blockForKeys(c, c->argv + 1, 1, timeout, c->argv[2]);
         }
     } else {

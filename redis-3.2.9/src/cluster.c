@@ -618,7 +618,7 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
  * However if the key contains the {...} pattern, only the part between
  * { and } is hashed. This may be useful in the future to force certain
  * keys to be in the same node (assuming no resharding is in progress). */
-//一共2的14次方16384个hash卡槽,如果key中有{}样式,只有{}中的内容用来计算slot，
+//一共2的14次方16384个hash卡槽,如果key中有{}样式,只有{}中的内容用来计算slot,
 //这可用于多个key强制使用同一个slot
 unsigned int keyHashSlot(char *key, int keylen) {
     int s, e; /* start-end indexes of { and } */

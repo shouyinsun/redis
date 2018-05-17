@@ -50,8 +50,9 @@
 
 /** 
  * 
- * 
- * OBJ_ENCODING_ZIPLIST,当有序集合类型达到配置文件中的阈值条件时,就会发生编码类型的转换,转换为OBJ_ENCODING_SKIPLIST类型
+ * 两种编码类型：OBJ_ENCODING_ZIPLIST 、OBJ_ENCODING_SKIPLIST
+ * OBJ_ENCODING_ZIPLIST,当有序集合类型达到配置文件中的阈值条件时
+ * 就会发生编码类型的转换,转换为 OBJ_ENCODING_SKIPLIST 类型
  * 而且转换是双向的,可以相互转换
  * 
  编码encoding	          对象ptr
@@ -71,9 +72,6 @@
  * 
  * 
  * ***/
-
-
-
 
 /***
  * 跳跃表实现
@@ -704,7 +702,7 @@ zskiplistNode *zslLastInLexRange(zskiplist *zsl, zlexrangespec *range) {
 /*-----------------------------------------------------------------------------
  * Ziplist-backed sorted set API
  *----------------------------------------------------------------------------*/
-
+// 从sptr指向的entry中取出有序集合的分值
 double zzlGetScore(unsigned char *sptr) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -729,6 +727,8 @@ double zzlGetScore(unsigned char *sptr) {
 /* Return a ziplist element as a Redis string object.
  * This simple abstraction can be used to simplifies some code at the
  * cost of some performance. */
+
+//ziplist 的entry的地址
 robj *ziplistGetObject(unsigned char *sptr) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -745,6 +745,7 @@ robj *ziplistGetObject(unsigned char *sptr) {
 }
 
 /* Compare element in sorted set with given element. */
+// 比较eptr和cstr指向的元素，返回0表示相等，正整数表示eptr比cstr大
 int zzlCompareElements(unsigned char *eptr, unsigned char *cstr, unsigned int clen) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -1246,6 +1247,8 @@ void zsetConvert(robj *zobj, int encoding) {
 /* Convert the sorted set object into a ziplist if it is not already a ziplist
  * and if the number of elements and the maximum element size is within the
  * expected ranges. */
+
+//转化成ziplist编码
 void zsetConvertToZiplistIfNeeded(robj *zobj, size_t maxelelen) {
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) return;
     zset *zset = zobj->ptr;

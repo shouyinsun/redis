@@ -367,8 +367,10 @@ typedef long long mstime_t; /* millisecond time type. */
 #define OBJ_HASH_MAX_ZIPLIST_ENTRIES 512
 #define OBJ_HASH_MAX_ZIPLIST_VALUE 64
 #define OBJ_SET_MAX_INTSET_ENTRIES 512
-#define OBJ_ZSET_MAX_ZIPLIST_ENTRIES 128
-#define OBJ_ZSET_MAX_ZIPLIST_VALUE 64
+
+//ziplist转换成skiplist 阀值条件
+#define OBJ_ZSET_MAX_ZIPLIST_ENTRIES 128//ziplist中最多存放的节点数
+#define OBJ_ZSET_MAX_ZIPLIST_VALUE 64 //ziplist中最大存放的数据长度
 
 /* List defaults */
 #define OBJ_LIST_MAX_ZIPLIST_SIZE -2
@@ -575,7 +577,7 @@ typedef struct blockingState {
     //造成阻塞的键
     dict *keys;             /* The keys we are waiting to terminate a blocking
                              * operation such as BLPOP. Otherwise NULL. */
-    //用于保存PUSH入元素的键，也就是dstkey                        
+    //用于保存PUSH入元素的键,也就是dstkey                        
     robj *target;           /* The key that should receive the element,
                              * for BRPOPLPUSH. */
 
@@ -1088,10 +1090,9 @@ typedef struct {
 typedef struct {
     robj *subject;
     int encoding;
-    //整数集合的迭代器，编码为INTSET使用
     int ii; /* intset iterator */
     dictIterator *di;
-} setTypeIterator;//set类型迭代器
+} setTypeIterator;
 
 /* Structure to hold hash iteration abstraction. Note that iteration over
  * hashes involves both fields and values. Because it is possible that
