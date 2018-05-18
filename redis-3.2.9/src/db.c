@@ -51,6 +51,9 @@ void slotToKeyFlush(void);
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
+
+//lookupKey
+//从数据库db中取出key的值对象
 robj *lookupKey(redisDb *db, robj *key, int flags) {
     dictEntry *de = dictFind(db->dict,key->ptr);
     if (de) {
@@ -59,6 +62,8 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
          * a copy on write madness. */
+
+        //更新键的使用时间
         if (server.rdb_child_pid == -1 &&
             server.aof_child_pid == -1 &&
             !(flags & LOOKUP_NOTOUCH))//NOTOUCH 不改变最后访问时间
@@ -92,13 +97,22 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
  * for read operations. Even if the key expiry is master-driven, we can
  * correctly report a key is expired on slaves even if the master is lagging
  * expiring our key via DELs in the replication link. */
+
+//以读操作取出key的值对象 没找到返回NULL
+// 调用该函数的副作用如下：
+// 1.如果一个键的到达过期时间TTL，该键被设置为过期的
+// 2.键的使用时间信息被更新
+// 3.全局键 hits/misses 状态被更新
+// 如果键在逻辑上已经过期但是仍然存在，函数返回NULL
 robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
     robj *val;
 
-    if (expireIfNeeded(db,key) == 1) {
+    if (expireIfNeeded(db,key) == 1) {// 如果键已经过期且被删除
         /* Key expired. If we are in the context of a master, expireIfNeeded()
          * returns 0 only when the key does not exist at all, so it's save
          * to return NULL ASAP. */
+
+        //master上下文,过期删除了key跟value
         if (server.masterhost == NULL) return NULL;
 
         /* However if we are in the context of a slave, expireIfNeeded() will
@@ -113,6 +127,9 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
          * will say the key as non exisitng.
          *
          * Notably this covers GETs when slaves are used to scale reads. */
+
+        //从节点环境， expireIfNeeded()函数不会删除过期的键，它返回的仅仅是键是否被删除的逻辑值
+        //过期的键由主节点负责，为了保证主从节点数据的一致
         if (server.current_client &&
             server.current_client != server.master &&
             server.current_client->cmd &&
@@ -121,7 +138,9 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
             return NULL;
         }
     }
+    //键没有过期，则返回键的值对象
     val = lookupKey(db,key,flags);
+    //更新  misses 和 hits 信息
     if (val == NULL)
         server.stat_keyspace_misses++;
     else
@@ -131,6 +150,8 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
 
 /* Like lookupKeyReadWithFlags(), but does not use any flag, which is the
  * common case. */
+
+///以读操作取出key的值对象 会更新是否命中的信息
 robj *lookupKeyRead(redisDb *db, robj *key) {
     return lookupKeyReadWithFlags(db,key,LOOKUP_NONE);
 }
@@ -140,18 +161,22 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
  *
  * Returns the linked value object if the key exists or NULL if the key
  * does not exist in the specified DB. */
+
+//以写操作取出key的值对象 不更新是否命中的信息
 robj *lookupKeyWrite(redisDb *db, robj *key) {
     //操作之前,先校验key是否过期
     expireIfNeeded(db,key);
     return lookupKey(db,key,LOOKUP_NONE);
 }
 
+//读操作取出key的值对象,没有命中则返回reply信息
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply) {
     robj *o = lookupKeyRead(c->db, key);
     if (!o) addReply(c,reply);
     return o;
 }
 
+//写操作取出key的值对象,没有命中则返回reply信息
 robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
     robj *o = lookupKeyWrite(c->db, key);
     if (!o) addReply(c,reply);
@@ -506,6 +531,7 @@ int parseScanCursorOrReply(client *c, robj *o, unsigned long *cursor) {
  * of every element on the Hash. */
 
 //scan命令
+// SCAN、HSCAN、SSCAN、ZSCAN一类命令底层实现
 void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     int i, j;
     list *keys = listCreate();
@@ -517,6 +543,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
 
     /* Object must be NULL (to iterate keys names), or the type of the object
      * must be Set, Sorted Set, or Hash. */
+    //输入类型的检查，要么迭代键名，要么当前集合对象，要么迭代哈希对象，要么迭代有序集合对象
     serverAssert(o == NULL || o->type == OBJ_SET || o->type == OBJ_HASH ||
                 o->type == OBJ_ZSET);
 
@@ -524,8 +551,10 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     i = (o == NULL) ? 2 : 3; /* Skip the key argument if needed. */
 
     /* Step 1: Parse options. */
+    // 1. 解析选项
     while (i < c->argc) {
         j = c->argc - i;
+        // 设定COUNT参数，COUNT 选项的作用就是让用户告知迭代命令， 在每次迭代中应该返回多少元素
         if (!strcasecmp(c->argv[i]->ptr, "count") && j >= 2) {
             if (getLongFromObjectOrReply(c, c->argv[i+1], &count, NULL)
                 != C_OK)
@@ -539,12 +568,14 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
             }
 
             i += 2;
+        // 设定MATCH参数，让命令只返回和给定模式相匹配的元素
         } else if (!strcasecmp(c->argv[i]->ptr, "match") && j >= 2) {
             pat = c->argv[i+1]->ptr;
             patlen = sdslen(pat);
 
             /* The pattern always matches if it is exactly "*", so it is
              * equivalent to disabling it. */
+            // 如果pattern是"*"，就不用匹配，全部返回，设置为0
             use_pattern = !(pat[0] == '*' && patlen == 1);
 
             i += 2;
@@ -563,15 +594,17 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
      * cursor to zero to signal the end of the iteration. */
 
     /* Handle the case of a hash table. */
+    // 2.如果对象是ziplist、intset或其他而不是哈希表，那么这些类型只是包含少量的元素
+    // 我们一次将其所有的元素全部返回给调用者，并设置游标cursor为0，标示迭代完成
     ht = NULL;
-    if (o == NULL) {
+    if (o == NULL) {// 迭代目标是数据库
         ht = c->db->dict;
-    } else if (o->type == OBJ_SET && o->encoding == OBJ_ENCODING_HT) {
+    } else if (o->type == OBJ_SET && o->encoding == OBJ_ENCODING_HT) {// 迭代目标是HT编码的集合对象
         ht = o->ptr;
-    } else if (o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT) {
+    } else if (o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT) {// 迭代目标是HT编码的哈希对象
         ht = o->ptr;
         count *= 2; /* We return key / value for this type. */
-    } else if (o->type == OBJ_ZSET && o->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (o->type == OBJ_ZSET && o->encoding == OBJ_ENCODING_SKIPLIST) {// 迭代目标是skiplist编码的有序集合对象
         zset *zs = o->ptr;
         ht = zs->dict;
         count *= 2; /* We return key / value for this type. */
@@ -583,6 +616,8 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
          * COUNT, so if the hash table is in a pathological state (very
          * sparsely populated) we avoid to block too much time at the cost
          * of returning no or very few elements. */
+
+        // 设置最大的迭代长度为10*count次
         long maxiterations = count*10;
 
         /* We pass two pointers to the callback: the list to which it will
@@ -590,6 +625,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
          * it is possible to fetch more data in a type-dependent way. */
         privdata[0] = keys;
         privdata[1] = o;
+        // 循环扫描ht，从游标cursor开始，调用指定的scanCallback函数，提出ht中的数据到刚开始创建的列表keys中
         do {
             cursor = dictScan(ht, cursor, scanCallback, privdata);
         } while (cursor &&
@@ -621,11 +657,12 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     }
 
     /* Step 3: Filter elements. */
-    node = listFirst(keys);
+    // 3. 如果设置MATCH参数，要进行过滤
+    node = listFirst(keys);//链表首节点地址
     while (node) {
-        robj *kobj = listNodeValue(node);
-        nextnode = listNextNode(node);
-        int filter = 0;
+        robj *kobj = listNodeValue(node);//key对象
+        nextnode = listNextNode(node);//下一个节点地址
+        int filter = 0;//默认为不过滤
 
         /* Filter element if it does not match the pattern. */
         if (!filter && use_pattern) {
@@ -667,17 +704,19 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     }
 
     /* Step 4: Reply to the client. */
+    // 4. 回复信息给client
     addReplyMultiBulkLen(c, 2);
     addReplyBulkLongLong(c,cursor);
 
     addReplyMultiBulkLen(c, listLength(keys));
+    //循环回复列表中的元素，并释放
     while ((node = listFirst(keys)) != NULL) {
         robj *kobj = listNodeValue(node);
         addReplyBulk(c, kobj);
         decrRefCount(kobj);
         listDelNode(keys, node);
     }
-
+// 清理代码
 cleanup:
     listSetFreeMethod(keys,decrRefCountVoid);
     listRelease(keys);
@@ -746,6 +785,10 @@ void shutdownCommand(client *c) {
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
 
+
+// RENAME key newkey
+// RENAMENX key newkey
+// RENAME、RENAMENX命令底层实现
 void renameGenericCommand(client *c, int nx) {
     robj *o;
     long long expire;
@@ -753,18 +796,23 @@ void renameGenericCommand(client *c, int nx) {
 
     /* When source and dest key is the same, no operation is performed,
      * if the key exists, however we still return an error on unexisting key. */
+    // key和newkey相同的话，设置samekey标志
     if (sdscmp(c->argv[1]->ptr,c->argv[2]->ptr) == 0) samekey = 1;
 
+
+    // 以写操作读取key的值对象  
     if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr)) == NULL)
         return;
 
-    if (samekey) {
+    if (samekey) {// 如果key和newkey相同，nx为1发送0，否则为ok
         addReply(c,nx ? shared.czero : shared.ok);
         return;
     }
-
+    // 增加值对象的引用计数，保护起来，用于关联newkey，以防删除了key顺带将值对象也删除
     incrRefCount(o);
+    // 备份key的过期时间，将来作为newkey的过期时间
     expire = getExpire(c->db,c->argv[1]);
+    // 判断newkey的值对象是否存在
     if (lookupKeyWrite(c->db,c->argv[2]) != NULL) {
         if (nx) {
             decrRefCount(o);
@@ -773,9 +821,11 @@ void renameGenericCommand(client *c, int nx) {
         }
         /* Overwrite: delete the old key before creating the new one
          * with the same name. */
-        dbDelete(c->db,c->argv[2]);
+        dbDelete(c->db,c->argv[2]);//将旧的newkey对象删除
     }
+    // 将newkey和key的值对象关联
     dbAdd(c->db,c->argv[2],o);
+    // 如果newkey设置过过期时间，则为newkey设置过期时间
     if (expire != -1) setExpire(c->db,c->argv[2],expire);
     dbDelete(c->db,c->argv[1]);
     signalModifiedKey(c->db,c->argv[1]);
@@ -796,21 +846,27 @@ void renamenxCommand(client *c) {
     renameGenericCommand(c,1);
 }
 
+
+// MOVE key db 将当前数据库的 key 移动到给定的数据库 db 当中。
+// MOVE 命令实现
 void moveCommand(client *c) {
     robj *o;
     redisDb *src, *dst;
     int srcid;
     long long dbid, expire;
 
+    // 服务器处于集群模式，不支持多数据库
     if (server.cluster_enabled) {
         addReplyError(c,"MOVE is not allowed in cluster mode");
         return;
     }
 
     /* Obtain source and target DB pointers */
+    // 获得源数据库和源数据库的id
     src = c->db;
     srcid = c->db->id;
 
+    //将参数db的值保存到dbid，并且切换到该数据库中
     if (getLongLongFromObject(c->argv[2],&dbid) == C_ERR ||
         dbid < INT_MIN || dbid > INT_MAX ||
         selectDb(c,dbid) == C_ERR)
@@ -818,29 +874,36 @@ void moveCommand(client *c) {
         addReply(c,shared.outofrangeerr);
         return;
     }
+    //切换之后,目标数据库
     dst = c->db;
+    //切换回源数据库
     selectDb(c,srcid); /* Back to the source DB */
 
     /* If the user is moving using as target the same
      * DB as the source DB it is probably an error. */
+    //如果前后切换的数据库相同，则返回有关错误
     if (src == dst) {
         addReply(c,shared.sameobjecterr);
         return;
     }
 
     /* Check if the element exists and get a reference */
+    //以写操作取出源数据库的对象
     o = lookupKeyWrite(c->db,c->argv[1]);
     if (!o) {
         addReply(c,shared.czero);
         return;
     }
+    //备份key的过期时间
     expire = getExpire(c->db,c->argv[1]);
 
     /* Return zero if the key already exists in the target DB */
+    //判断当前key是否存在于目标数据库，存在直接返回，发送0
     if (lookupKeyWrite(dst,c->argv[1]) != NULL) {
         addReply(c,shared.czero);
         return;
     }
+    //将key-value对象添加到目标数据库中
     dbAdd(dst,c->argv[1],o);
     if (expire != -1) setExpire(dst,c->argv[1],expire);
     incrRefCount(o);
@@ -911,15 +974,26 @@ void propagateExpire(redisDb *db, robj *key) {
     decrRefCount(argv[1]);
 }
 
+/**
+ * 两种删除方式
+ * 1.惰性删除：读取key时,查看是否超时,超时则删除key
+ * 2.定时删除：redis维护一个job,默认10s执行一次
+ * 
+ * **/
 
-//过期操作,删除key
+
+
+//过期操作,删除key (惰性删除)
+//返回0表示没有过期或没有过期时间，返回1 表示键被删除
 int expireIfNeeded(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
 
+    //得到过期时间，单位毫秒
     if (when < 0) return 0; /* No expire for this key */
 
     /* Don't expire anything while loading. It will be done later. */
+    // 服务器正在载入，那么不进行过期检查
     if (server.loading) return 0;
 
     /* If we are in the context of a Lua script, we claim that time is
@@ -927,6 +1001,7 @@ int expireIfNeeded(redisDb *db, robj *key) {
      * only the first time it is accessed and not in the middle of the
      * script execution, making propagation to slaves / AOF consistent.
      * See issue #1525 on Github for more information. */
+    //Unix时间 单位毫秒 LUA脚本的是 首次访问时间
     now = server.lua_caller ? server.lua_time_start : mstime();
 
     /* If we are running in the context of a slave, return ASAP:
@@ -936,12 +1011,15 @@ int expireIfNeeded(redisDb *db, robj *key) {
      * Still we try to return the right information to the caller,
      * that is, 0 if we think the key should be still valid, 1 if
      * we think the key is expired at this time. */
+
+    //在slave上下文中,不做删除操作,过期返回1 
     if (server.masterhost != NULL) return now > when;
 
     /* Return when this key has not expired */
     if (now <= when) return 0;
 
     /* Delete the key */
+    //master上下文,过期删除key
     server.stat_expiredkeys++;
     propagateExpire(db,key);
     notifyKeyspaceEvent(NOTIFY_EXPIRED,
@@ -960,10 +1038,12 @@ int expireIfNeeded(redisDb *db, robj *key) {
  *
  * unit is either UNIT_SECONDS or UNIT_MILLISECONDS, and is only used for
  * the argv[2] parameter. The basetime is always specified in milliseconds. */
+
+// EXPIRE, PEXPIRE, EXPIREAT,PEXPIREAT命令的底层实现
 void expireGenericCommand(client *c, long long basetime, int unit) {
     robj *key = c->argv[1], *param = c->argv[2];
     long long when; /* unix time in milliseconds when the key will expire. */
-
+    // 取出时间参数保存到when中
     if (getLongLongFromObjectOrReply(c, param, &when, NULL) != C_OK)
         return;
 
@@ -982,21 +1062,32 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
      *
      * Instead we take the other branch of the IF statement setting an expire
      * (possibly in the past) and wait for an explicit DEL from the master. */
-    if (when <= mstime() && !server.loading && !server.masterhost) {
+
+    // 如果当前正在载入AOF数据或者在从节点环境中，即使EXPIRE的TTL为负数，或者EXPIREAT的时间戳已经过期
+    // 服务器都不会执行DEL命令，且将过期TTL设置为键的过期时间，等待主节点发来的DEL命令
+
+
+    if (when <= mstime() && !server.loading && !server.masterhost) {//如果when已经过时，服务器为主节点且没有载入AOF数据
         robj *aux;
 
+        // 将key从数据库中删除
         serverAssertWithInfo(c,key,dbDelete(c->db,key));
         server.dirty++;
 
         /* Replicate/AOF this as an explicit DEL. */
+        // 创建一个"DEL"命令
         aux = createStringObject("DEL",3);
+        // 修改客户端的参数列表为DEL命令
         rewriteClientCommandVector(c,2,aux,key);
         decrRefCount(aux);
+        // 发送键被修改的信号
         signalModifiedKey(c->db,key);
+        // 发送"del"的事件通知
         notifyKeyspaceEvent(NOTIFY_GENERIC,"del",key,c->db->id);
         addReply(c, shared.cone);
         return;
-    } else {
+    } else {// 如果当前服务器是从节点，或者服务器正在载入AOF数据
+            // 不管when有没有过时，都设置为过期时间
         setExpire(c->db,key,when);
         addReply(c,shared.cone);
         signalModifiedKey(c->db,key);
@@ -1022,24 +1113,28 @@ void pexpireatCommand(client *c) {
     expireGenericCommand(c,0,UNIT_MILLISECONDS);
 }
 
+
+// TTL、PTTL命令底层实现，output_ms为1，返回毫秒，为0返回秒
 void ttlGenericCommand(client *c, int output_ms) {
     long long expire, ttl = -1;
 
     /* If the key does not exist at all, return -2 */
+    // 判断key是否存在于数据库，并且不修改键的使用时间
     if (lookupKeyReadWithFlags(c->db,c->argv[1],LOOKUP_NOTOUCH) == NULL) {
         addReplyLongLong(c,-2);
         return;
     }
     /* The key exists. Return -1 if it has no expire, or the actual
      * TTL value otherwise. */
+    // 如果key存在，则备份当前key的过期时间
     expire = getExpire(c->db,c->argv[1]);
-    if (expire != -1) {
+    if (expire != -1) {//计算ttl
         ttl = expire-mstime();
         if (ttl < 0) ttl = 0;
     }
-    if (ttl == -1) {
-        addReplyLongLong(c,-1);
-    } else {
+    if (ttl == -1) {// 如果键是永久的
+        addReplyLongLong(c,-1);//-1
+    } else {//ms or s
         addReplyLongLong(c,output_ms ? ttl : ((ttl+500)/1000));
     }
 }
