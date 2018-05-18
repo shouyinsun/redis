@@ -766,6 +766,8 @@ int zzlCompareElements(unsigned char *eptr, unsigned char *cstr, unsigned int cl
     return cmp;
 }
 
+// 返回ziplist有序集合的元素个数 
+//key1->value1->key2->value2 ... 成对排列  元素个数为entry个数的 1/2
 unsigned int zzlLength(unsigned char *zl) {
     return ziplistLen(zl)/2;
 }
@@ -793,6 +795,7 @@ void zzlNext(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
 
 /* Move to the previous entry based on the values in eptr and sptr. Both are
  * set to NULL when there is no next entry. */
+// 将当前的元素指针eptr和当前元素分值的指针sptr都指向上一个元素和元素的分值
 void zzlPrev(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
     unsigned char *_eptr, *_sptr;
     serverAssert(*eptr != NULL && *sptr != NULL);
@@ -812,6 +815,7 @@ void zzlPrev(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
 
 /* Returns if there is a part of the zset is in range. Should only be used
  * internally by zzlFirstInRange and zzlLastInRange. */
+//判断ziplist中是否有entry节点在range范围之内，有则返回1，否则返回0
 int zzlIsInRange(unsigned char *zl, zrangespec *range) {
     unsigned char *p;
     double score;
@@ -838,6 +842,7 @@ int zzlIsInRange(unsigned char *zl, zrangespec *range) {
 
 /* Find pointer to the first element contained in the specified range.
  * Returns NULL when no element is contained in the range. */
+//第一个满足range范围的entry节点的地址
 unsigned char *zzlFirstInRange(unsigned char *zl, zrangespec *range) {
     unsigned char *eptr = ziplistIndex(zl,0), *sptr;
     double score;
@@ -866,6 +871,7 @@ unsigned char *zzlFirstInRange(unsigned char *zl, zrangespec *range) {
 
 /* Find pointer to the last element contained in the specified range.
  * Returns NULL when no element is contained in the range. */
+//最后一个满足range范围的entry节点的地址
 unsigned char *zzlLastInRange(unsigned char *zl, zrangespec *range) {
     unsigned char *eptr = ziplistIndex(zl,-2), *sptr;
     double score;
@@ -896,7 +902,7 @@ unsigned char *zzlLastInRange(unsigned char *zl, zrangespec *range) {
 
     return NULL;
 }
-
+// 比较p指向的entry的值和规定范围spec，返回1表示大于spec的最大值
 static int zzlLexValueGteMin(unsigned char *p, zlexrangespec *spec) {
     robj *value = ziplistGetObject(p);
     int res = zslLexValueGteMin(value,spec);
@@ -987,7 +993,7 @@ unsigned char *zzlLastInLexRange(unsigned char *zl, zlexrangespec *range) {
 
     return NULL;
 }
-
+// 从ziplist中查找ele，将分值保存在score中
 unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score) {
     unsigned char *eptr = ziplistIndex(zl,0), *sptr;
 
@@ -1013,6 +1019,7 @@ unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score) {
 
 /* Delete (element,score) pair from ziplist. Use local copy of eptr because we
  * don't want to modify the one given as argument. */
+//删除eptr指定的元素和分值
 unsigned char *zzlDelete(unsigned char *zl, unsigned char *eptr) {
     unsigned char *p = eptr;
 
@@ -1022,6 +1029,7 @@ unsigned char *zzlDelete(unsigned char *zl, unsigned char *eptr) {
     return zl;
 }
 
+//将ele元素和分值score插入到eptr指向节点的前面
 unsigned char *zzlInsertAt(unsigned char *zl, unsigned char *eptr, robj *ele, double score) {
     unsigned char *sptr;
     char scorebuf[128];
@@ -1085,6 +1093,7 @@ unsigned char *zzlInsert(unsigned char *zl, robj *ele, double score) {
     return zl;
 }
 
+// 删除ziplist中分值在制定范围内的元素，并保存删除的数量在deleted中
 unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     double score;
@@ -1113,7 +1122,7 @@ unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsig
     if (deleted != NULL) *deleted = num;
     return zl;
 }
-
+// 删除ziplist中分值在制定字典序范围内的元素，并保存删除的数量在deleted中
 unsigned char *zzlDeleteRangeByLex(unsigned char *zl, zlexrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     unsigned long num = 0;
@@ -1143,6 +1152,8 @@ unsigned char *zzlDeleteRangeByLex(unsigned char *zl, zlexrangespec *range, unsi
 
 /* Delete all the elements with rank between start and end from the skiplist.
  * Start and end are inclusive. Note that start and end need to be 1-based */
+
+// 删除给定下标范围内的所有元素
 unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsigned int end, unsigned long *deleted) {
     unsigned int num = (end-start)+1;
     if (deleted) *deleted = num;
@@ -1157,10 +1168,10 @@ unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsig
 //有序集合的元素个数
 unsigned int zsetLength(robj *zobj) {
     int length = -1;
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
-        length = zzlLength(zobj->ptr);
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
-        length = ((zset*)zobj->ptr)->zsl->length;
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {//ziplist
+        length = zzlLength(zobj->ptr);//ziplist length 的1/2
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {//skiplist
+        length = ((zset*)zobj->ptr)->zsl->length;//跳跃表的length
     } else {
         serverPanic("Unknown sorted set encoding");
     }
@@ -1175,7 +1186,7 @@ void zsetConvert(robj *zobj, int encoding) {
     double score;
 
     if (zobj->encoding == encoding) return;
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {//skiplist转ziplist
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;
         unsigned char *vstr;
@@ -1189,7 +1200,7 @@ void zsetConvert(robj *zobj, int encoding) {
         zs->dict = dictCreate(&zsetDictType,NULL);
         zs->zsl = zslCreate();
 
-        eptr = ziplistIndex(zl,0);
+        eptr = ziplistIndex(zl,0);//第一个元素
         serverAssertWithInfo(NULL,zobj,eptr != NULL);
         sptr = ziplistNext(zl,eptr);
         serverAssertWithInfo(NULL,zobj,sptr != NULL);
@@ -1197,9 +1208,9 @@ void zsetConvert(robj *zobj, int encoding) {
         while (eptr != NULL) {
             score = zzlGetScore(sptr);
             serverAssertWithInfo(NULL,zobj,ziplistGet(eptr,&vstr,&vlen,&vlong));
-            if (vstr == NULL)
+            if (vstr == NULL)//long
                 ele = createStringObjectFromLongLong(vlong);
-            else
+            else//long
                 ele = createStringObject((char*)vstr,vlen);
 
             /* Has incremented refcount since it was just created. */
@@ -1212,7 +1223,7 @@ void zsetConvert(robj *zobj, int encoding) {
         zfree(zobj->ptr);
         zobj->ptr = zs;
         zobj->encoding = OBJ_ENCODING_SKIPLIST;
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {//ziplist转skiplist
         unsigned char *zl = ziplistNew();
 
         if (encoding != OBJ_ENCODING_ZIPLIST)
@@ -1669,7 +1680,6 @@ void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
 }
 
-//从集合类型迭代器中恢复存储的值
 typedef struct {
     robj *subject;//所属的对象
     int type; /* Set, sorted set */
@@ -1677,32 +1687,32 @@ typedef struct {
     double weight;//权重
 
     union {
-        /* Set iterators. */
+        /* Set iterators. */  //集合迭代器
         union _iterset {
             struct {//intset迭代器
                 intset *is;
-                int ii;
+                int ii; //intset节点下标
             } is;
             struct {//字典迭代器
-                dict *dict;
-                dictIterator *di;
-                dictEntry *de;
+                dict *dict;//所属的字典
+                dictIterator *di;//字典的迭代器
+                dictEntry *de; //当前指向的字典节点
             } ht;
         } set;
 
-        /* Sorted set iterators. */
+        /* Sorted set iterators. */  //有序集合迭代器  
         union _iterzset {
-            struct {
-                unsigned char *zl;
-                unsigned char *eptr, *sptr;
+            struct {//ziplist迭代器
+                unsigned char *zl; //所属的ziplist
+                unsigned char *eptr, *sptr;//当前指向的元素和分值
             } zl;
-            struct {
+            struct {//zset迭代器
                 zset *zs;
-                zskiplistNode *node;
+                zskiplistNode *node;//当前指向的跳跃节点
             } sl;
         } zset;
     } iter;
-} zsetopsrc;
+} zsetopsrc;//集合类型的迭代器
 
 
 /* Use dirty flags for pointers that need to be cleaned up in the next
@@ -1730,6 +1740,8 @@ typedef struct {
 typedef union _iterset iterset;
 typedef union _iterzset iterzset;
 
+
+// 初始化迭代器
 void zuiInitIterator(zsetopsrc *op) {
     if (op->subject == NULL)
         return;
@@ -1908,6 +1920,7 @@ int zuiLongLongFromValue(zsetopval *val) {
     return val->flags & OPVAL_VALID_LL;
 }
 
+// 根据val中的值，创建对象
 robj *zuiObjectFromValue(zsetopval *val) {
     if (val->ele == NULL) {
         if (val->estr != NULL) {
@@ -2058,6 +2071,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     src = zcalloc(sizeof(zsetopsrc) * setnum);
     // 遍历key
     for (i = 0, j = 3; i < setnum; i++, j++) {
+        // 以写方式读取出有序集合
         robj *obj = lookupKeyWrite(c->db,c->argv[j]);
         if (obj != NULL) {
             if (obj->type != OBJ_ZSET && obj->type != OBJ_SET) {
@@ -2065,11 +2079,11 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                 addReply(c,shared.wrongtypeerr);
                 return;
             }
-
+            // 初始化每个集合对象的迭代器
             src[i].subject = obj;
             src[i].type = obj->type;
             src[i].encoding = obj->encoding;
-        } else {
+        } else {//集合对象不存在则设置为NULL
             src[i].subject = NULL;
         }
 
@@ -2078,15 +2092,15 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     }
 
     /* parse optional extra arguments */
-    if (j < c->argc) {
+    if (j < c->argc) { // 解析其他的参数
         int remaining = c->argc - j;
 
-        // 解析其他的参数
         while (remaining) {
             //设置了权重WEIGHTS参数
             if (remaining >= (setnum + 1) && !strcasecmp(c->argv[j]->ptr,"weights")) {
                 j++; remaining--;
                 for (i = 0; i < setnum; i++, j++, remaining--) {
+                    // 遍历设置的weight，保存到每个集合对象的迭代器中
                     if (getDoubleFromObjectOrReply(c,c->argv[j],&src[i].weight,
                             "weight value is not a float") != C_OK)
                     {
@@ -2120,7 +2134,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
 
     /* sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
-     // 对所有集合元素的多少,从小到大排序,提高算法性能
+     // 对所有集合元素个数,从小到大排序,提高算法性能
     qsort(src,setnum,sizeof(zsetopsrc),zuiCompareByCardinality);
 
     dstobj = createZsetObject();
@@ -2140,8 +2154,9 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
             zuiInitIterator(&src[0]);
             while (zuiNext(&src[0],&zval)) {
                 double score, value;
-
+                // 计算加权分值
                 score = src[0].weight * zval.score;
+                 // 根据集合方式sum、min、max保存结果值到score
                 if (isnan(score)) score = 0;
 
                 for (j = 1; j < setnum; j++) {
@@ -2189,7 +2204,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
         if (setnum) {
             /* Our union is at least as large as the largest set.
              * Resize the dictionary ASAP to avoid useless rehashing. */
-            //并集至少跟最大集合的一样
+            // 计算出最大有序集合元素个数，并集至少和最大的集合一样大，因此按需扩展结果集字典集至少跟最大集合的一样
             dictExpand(accumulator,zuiLength(&src[setnum-1]));
         }
 
@@ -2449,10 +2464,11 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
     }
 
     /* Ok, lookup the key and get the range */
+    // 以读操作取出有序集合对象
     if ((zobj = lookupKeyReadOrReply(c,key,shared.emptymultibulk)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {// ziplist
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;
         unsigned char *vstr;
@@ -2523,7 +2539,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
                 zzlNext(zl,&eptr,&sptr);
             }
         }
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) { // 跳跃表
         zset *zs = zobj->ptr;
         zskiplist *zsl = zs->zsl;
         zskiplistNode *ln;
@@ -2971,22 +2987,24 @@ void zrankGenericCommand(client *c, int reverse) {
     unsigned long llen;
     unsigned long rank;
 
+    // 以读操作取出有序集合对象
     if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
-    llen = zsetLength(zobj);
+    llen = zsetLength(zobj);//获得集合元素数量
 
+    //member参数必须是字符串类型对象
     serverAssertWithInfo(c,ele,sdsEncodedObject(ele));
 
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {//ziplist
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;
 
-        eptr = ziplistIndex(zl,0);
+        eptr = ziplistIndex(zl,0);//起始元素节点地址
         serverAssertWithInfo(c,zobj,eptr != NULL);
-        sptr = ziplistNext(zl,eptr);
+        sptr = ziplistNext(zl,eptr);//元素节点地址
         serverAssertWithInfo(c,zobj,sptr != NULL);
 
-        rank = 1;
+        rank = 1;//排位
         while(eptr != NULL) {
             if (ziplistCompare(eptr,ele->ptr,sdslen(ele->ptr)))
                 break;
@@ -2994,7 +3012,7 @@ void zrankGenericCommand(client *c, int reverse) {
             zzlNext(zl,&eptr,&sptr);
         }
 
-        if (eptr != NULL) {
+        if (eptr != NULL) {//返回排位值
             if (reverse)
                 addReplyLongLong(c,llen-rank);
             else
@@ -3002,14 +3020,14 @@ void zrankGenericCommand(client *c, int reverse) {
         } else {
             addReply(c,shared.nullbulk);
         }
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {//skiplist
         zset *zs = zobj->ptr;
         zskiplist *zsl = zs->zsl;
         dictEntry *de;
         double score;
 
         ele = c->argv[2];
-        de = dictFind(zs->dict,ele);
+        de = dictFind(zs->dict,ele);//查找保存member的节点地址
         if (de != NULL) {
             score = *(double*)dictGetVal(de);
             rank = zslGetRank(zsl,score,ele);

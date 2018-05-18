@@ -1091,6 +1091,7 @@ typedef struct {
     robj *subject;
     int encoding;
     int ii; /* intset iterator */
+    //字典的迭代器，编码为HT使用
     dictIterator *di;
 } setTypeIterator;
 
@@ -1327,17 +1328,19 @@ unsigned long aofRewriteBufferSize(void);
 /* Sorted sets data type */
 
 /* Struct to hold a inclusive/exclusive range spec by score comparison. */
+
 typedef struct {
     double min, max;
+    //minex表示排除最小值,是否包含
     int minex, maxex; /* are min or max exclusive? */
-} zrangespec;
+} zrangespec;// 分值序的范围和边界
 
 /* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. */
 typedef struct {
     robj *min, *max;  /* May be set to shared.(minstring|maxstring) */
     //是否排除最大、最小
     int minex, maxex; /* are min or max exclusive? */
-} zlexrangespec;
+} zlexrangespec;//  字典序的范围和边界
 
 zskiplist *zslCreate(void);
 void zslFree(zskiplist *zsl);
