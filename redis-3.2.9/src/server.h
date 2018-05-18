@@ -81,6 +81,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CONFIG_DEFAULT_SERVER_PORT        6379    /* TCP port */
 #define CONFIG_DEFAULT_TCP_BACKLOG       511     /* TCP listen backlog */
 #define CONFIG_DEFAULT_CLIENT_TIMEOUT       0       /* default client timeout: infinite */
+//Redis服务器在初始化时 会创建一个长度为dbnum(默认为16)个 redisDb类型数组
 #define CONFIG_DEFAULT_DBNUM     16
 #define CONFIG_MAX_LINE    1024
 #define CRON_DBS_PER_CALL 16
@@ -535,17 +536,39 @@ struct evictionPoolEntry {
  * database. The database number is the 'id' field in the structure. */
 
 
+
+/*****
+ *
+ key-value数据库服务器
+ 所有的键值对都保存在 redisDb 结构中的 dict 字典成员中
+
+ 键值对
+ 字典的键,就是数据库的key,每一个key都是字符串的对象
+ 键值对字典的值,就是数据库的value
+ 每一个value可以是字符串的对象,列表对象,哈希表对象,集合对象和有序集合对象中的任意一种。
+ * 
+ * 
+ * 
+ * ****/
+
+
 //redisDb 结构
 typedef struct redisDb {
+    //键值对字典,保存数据库中所有的键值对
     dict *dict;                 /* The keyspace for this DB */
+    // 过期字典,保存着设置过期的键和键的过期时间
     dict *expires;   
-    //正处于阻塞状态的键           /* Timeout of keys with a timeout set */
+    //所有造成客户端阻塞的键和被阻塞的客户端          /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP) */
     //可以解除阻塞的键
     dict *ready_keys;           /* Blocked keys that received a PUSH */
+    //事物模块,用于保存被WATCH命令所监控的键
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+    // 当内存不足时,Redis会根据LRU算法回收一部分键所占的空间  eviction_pool是一个长为16数组,保存可能被回收的键
     struct evictionPoolEntry *eviction_pool;    /* Eviction pool of keys */
+    // 数据库ID
     int id;                     /* Database ID */
+    // 键的平均过期时间
     long long avg_ttl;          /* Average TTL, just for stats */
 } redisDb;
 
@@ -658,7 +681,7 @@ typedef struct client {
     /* Response buffer */
     int bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
-} client;
+} client; //redis客户端
 
 struct saveparam {
     time_t seconds;
@@ -756,6 +779,7 @@ struct redisServer {
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
     int hz;                     /* serverCron() calls frequency in hertz */
+    //redis db
     redisDb *db;
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
@@ -1025,7 +1049,7 @@ struct redisServer {
     int watchdog_period;  /* Software watchdog period in ms. 0 = off */
     /* System hardware info */
     size_t system_memory_size;  /* Total memory in system as reported by OS */
-};
+};//redis服务端
 
 typedef struct pubsubPattern {
     client *client;
@@ -1091,7 +1115,7 @@ typedef struct {
     robj *subject;
     int encoding;
     int ii; /* intset iterator */
-    //字典的迭代器，编码为HT使用
+    //字典的迭代器,编码为HT使用
     dictIterator *di;
 } setTypeIterator;
 

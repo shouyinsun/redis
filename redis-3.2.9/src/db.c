@@ -27,6 +27,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/****
+ redis服务器在初始化时
+ 会创建一个长度为dbnum(默认为16)个 redisDb类型数组
+ 客户端登录时,默认的数据库为0号数据库
+ **/
+
+
 #include "server.h"
 #include "cluster.h"
 
@@ -54,7 +61,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
          * a copy on write madness. */
         if (server.rdb_child_pid == -1 &&
             server.aof_child_pid == -1 &&
-            !(flags & LOOKUP_NOTOUCH))
+            !(flags & LOOKUP_NOTOUCH))//NOTOUCH 不改变最后访问时间
         {
             val->lru = LRU_CLOCK();
         }
@@ -288,6 +295,7 @@ long long emptyDb(void(callback)(void*)) {
     return removed;
 }
 
+//切换客户端的db
 int selectDb(client *c, int id) {
     if (id < 0 || id >= server.dbnum)
         return C_ERR;
@@ -316,6 +324,7 @@ void signalFlushedDb(int dbid) {
  * Type agnostic commands operating on the key space
  *----------------------------------------------------------------------------*/
 
+//清空db
 void flushdbCommand(client *c) {
     server.dirty += dictSize(c->db->dict);
     signalFlushedDb(c->db->id);
@@ -325,6 +334,7 @@ void flushdbCommand(client *c) {
     addReply(c,shared.ok);
 }
 
+//清空所有db
 void flushallCommand(client *c) {
     signalFlushedDb(-1);
     server.dirty += emptyDb(NULL);
@@ -343,6 +353,7 @@ void flushallCommand(client *c) {
     server.dirty++;
 }
 
+//删除命令
 void delCommand(client *c) {
     int deleted = 0, j;
 
@@ -361,6 +372,8 @@ void delCommand(client *c) {
 
 /* EXISTS key1 key2 ... key_N.
  * Return value is the number of keys existing. */
+
+//存在key的数量
 void existsCommand(client *c) {
     long long count = 0;
     int j;
@@ -371,6 +384,7 @@ void existsCommand(client *c) {
     }
     addReplyLongLong(c,count);
 }
+
 
 void selectCommand(client *c) {
     long id;
