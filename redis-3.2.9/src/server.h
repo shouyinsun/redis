@@ -359,9 +359,11 @@ typedef long long mstime_t; /* millisecond time type. */
 #define ZSKIPLIST_P 0.25      /* Skiplist P = 1/4 */
 
 /* Append only defines */
+// 缓冲区同步到文件策略 
 #define AOF_FSYNC_NO 0
 #define AOF_FSYNC_ALWAYS 1
-#define AOF_FSYNC_EVERYSEC 2
+#define AOF_FSYNC_EVERYSEC 2 //每一秒同步一次
+//默认 AOF_FSYNC_EVERYSEC
 #define CONFIG_DEFAULT_AOF_FSYNC AOF_FSYNC_EVERYSEC
 
 /* Zip structure related defaults */
@@ -426,10 +428,15 @@ typedef long long mstime_t; /* millisecond time type. */
 #define RDB_CHILD_TYPE_DISK 1     /* RDB is written to disk. */
 #define RDB_CHILD_TYPE_SOCKET 2   /* RDB is written to slave socket. */
 
+
+
+
+
+//redis通知类型
 /* Keyspace changes notification classes. Every class is associated with a
  * character for configuration purposes. */
-#define NOTIFY_KEYSPACE (1<<0)    /* K */
-#define NOTIFY_KEYEVENT (1<<1)    /* E */
+#define NOTIFY_KEYSPACE (1<<0)    /* K */   //键空间通知
+#define NOTIFY_KEYEVENT (1<<1)    /* E */   //键事件通知
 #define NOTIFY_GENERIC (1<<2)     /* g */
 #define NOTIFY_STRING (1<<3)      /* $ */
 #define NOTIFY_LIST (1<<4)        /* l */
@@ -808,6 +815,7 @@ struct redisServer {
     list *clients;              /* List of active clients */
     list *clients_to_close;     /* Clients to close asynchronously */
     list *clients_pending_write; /* There is to write or install handler. */
+    //从节点列表和监视器列表
     list *slaves, *monitors;    /* List of slaves and MONITORs */
     client *current_client; /* Current client, only used on crash report */
     int clients_paused;         /* True if clients are currently paused */
@@ -817,10 +825,15 @@ struct redisServer {
     uint64_t next_client_id;    /* Next client unique ID. Incremental. */
     int protected_mode;         /* Don't accept external connections. */
     /* RDB / AOF loading information */
+    //RDB或者AOF正在载入状态
     int loading;                /* We are loading data from disk if true */
+    //载入的总字节
     off_t loading_total_bytes;
+    //载入的字节数
     off_t loading_loaded_bytes;
+    // 载入的开始时间
     time_t loading_start_time;
+    // 在load时,用来设置读或写的最大字节数max_processing_chunk
     off_t loading_process_events_interval_bytes;
     /* Fast pointers to often looked up command */
     struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,
@@ -833,8 +846,11 @@ struct redisServer {
     long long stat_evictedkeys;     /* Number of evicted keys (maxmemory) */
     long long stat_keyspace_hits;   /* Number of successful lookups of keys */
     long long stat_keyspace_misses; /* Number of failed lookups of keys */
+    //最大使用内存
     size_t stat_peak_memory;        /* Max used memory record */
+    // 计算fork()的时间
     long long stat_fork_time;       /* Time needed to perform latest fork() */
+    // 计算fork的速率,GB/每秒
     double stat_fork_rate;          /* Fork rate in GB/sec. */
     long long stat_rejected_conn;   /* Clients rejected because of maxclients */
     long long stat_sync_full;       /* Number of full resyncs with slaves. */
@@ -878,8 +894,10 @@ struct redisServer {
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
     pid_t aof_child_pid;            /* PID if rewriting process */
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
+    // AOF缓冲区,在进入事件loop之前写入
     sds aof_buf;      /* AOF buffer, written before entering the event loop */
     int aof_fd;       /* File descriptor of currently selected AOF file */
+    // 执行AOF时,当前的数据库ID
     int aof_selected_db; /* Currently selected DB in AOF */
     time_t aof_flush_postponed_start; /* UNIX time of postponed AOF flush */
     time_t aof_last_fsync;            /* UNIX time of last fsync() */
@@ -902,22 +920,36 @@ struct redisServer {
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
     /* RDB persistence */
+    // 脏键,记录数据库被修改的次数
     long long dirty;                /* Changes to DB from the last save */
+    // 在BGSAVE之前要备份脏键dirty的值,如果BGSAVE失败会还原
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
+    // 执行BGSAVE的子进程的pid
     pid_t rdb_child_pid;            /* PID of RDB saving child */
+    // 保存save参数的数组
     struct saveparam *saveparams;   /* Save points array for RDB */
+    // 数组长度
     int saveparamslen;              /* Number of saving points */
+    // RDB文件的名字,默认为dump.rdb
     char *rdb_filename;             /* Name of RDB file */
+    // 是否采用LZF压缩算法压缩RDB文件,默认yes
     int rdb_compression;            /* Use compression in RDB? */
+    // RDB文件是否使用校验和,默认yes
     int rdb_checksum;               /* Use RDB checksum? */
+    // 上一次执行SAVE成功的时间
     time_t lastsave;                /* Unix time of last successful save */
+    // 最近一个尝试执行BGSAVE的时间
     time_t lastbgsave_try;          /* Unix time of last attempted bgsave */
     time_t rdb_save_time_last;      /* Time used by last RDB save run. */
     time_t rdb_save_time_start;     /* Current RDB save start time. */
+    // 当rdb_bgsave_scheduled为真时,才能开始BGSAVE
     int rdb_bgsave_scheduled;       /* BGSAVE when possible if true. */
+    // rdb执行的类型,是写入磁盘,还是写入从节点的socket
     int rdb_child_type;             /* Type of save by active child. */
+    // BGSAVE执行完的状态
     int lastbgsave_status;          /* C_OK or C_ERR */
     int stop_writes_on_bgsave_err;  /* Don't allow writes if can't BGSAVE */
+    // 无磁盘同步,管道的写端
     int rdb_pipe_write_result_to_parent; /* RDB pipes used to return the state */
     int rdb_pipe_read_result_from_child; /* of each slave in diskless SYNC. */
     /* Propagation of commands in AOF / replication */
@@ -1004,7 +1036,9 @@ struct redisServer {
     int list_max_ziplist_size;
     int list_compress_depth;
     /* time cache */
+    // 保存秒单位的Unix时间戳的缓存
     time_t unixtime;        /* Unix time sampled every cron cycle. */
+    // 保存毫秒单位的Unix时间戳的缓存
     long long mstime;       /* Like 'unixtime' but with milliseconds resolution. */
     /* Pubsub */
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
@@ -1489,7 +1523,7 @@ robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply);
 robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply);
 robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags);
 #define LOOKUP_NONE 0
-//不修改键的使用时间，如果只是想判断key的值对象的编码类型（TYPE命令）不希望改变键的使用时间
+//不修改键的使用时间,如果只是想判断key的值对象的编码类型（TYPE命令）不希望改变键的使用时间
 #define LOOKUP_NOTOUCH (1<<0)
 void dbAdd(redisDb *db, robj *key, robj *val);
 void dbOverwrite(redisDb *db, robj *key, robj *val);

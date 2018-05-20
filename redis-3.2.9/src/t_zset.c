@@ -745,7 +745,7 @@ robj *ziplistGetObject(unsigned char *sptr) {
 }
 
 /* Compare element in sorted set with given element. */
-// 比较eptr和cstr指向的元素，返回0表示相等，正整数表示eptr比cstr大
+// 比较eptr和cstr指向的元素,返回0表示相等,正整数表示eptr比cstr大
 int zzlCompareElements(unsigned char *eptr, unsigned char *cstr, unsigned int clen) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -815,7 +815,7 @@ void zzlPrev(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
 
 /* Returns if there is a part of the zset is in range. Should only be used
  * internally by zzlFirstInRange and zzlLastInRange. */
-//判断ziplist中是否有entry节点在range范围之内，有则返回1，否则返回0
+//判断ziplist中是否有entry节点在range范围之内,有则返回1,否则返回0
 int zzlIsInRange(unsigned char *zl, zrangespec *range) {
     unsigned char *p;
     double score;
@@ -902,7 +902,7 @@ unsigned char *zzlLastInRange(unsigned char *zl, zrangespec *range) {
 
     return NULL;
 }
-// 比较p指向的entry的值和规定范围spec，返回1表示大于spec的最大值
+// 比较p指向的entry的值和规定范围spec,返回1表示大于spec的最大值
 static int zzlLexValueGteMin(unsigned char *p, zlexrangespec *spec) {
     robj *value = ziplistGetObject(p);
     int res = zslLexValueGteMin(value,spec);
@@ -993,7 +993,7 @@ unsigned char *zzlLastInLexRange(unsigned char *zl, zlexrangespec *range) {
 
     return NULL;
 }
-// 从ziplist中查找ele，将分值保存在score中
+// 从ziplist中查找ele,将分值保存在score中
 unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score) {
     unsigned char *eptr = ziplistIndex(zl,0), *sptr;
 
@@ -1093,7 +1093,7 @@ unsigned char *zzlInsert(unsigned char *zl, robj *ele, double score) {
     return zl;
 }
 
-// 删除ziplist中分值在制定范围内的元素，并保存删除的数量在deleted中
+// 删除ziplist中分值在制定范围内的元素,并保存删除的数量在deleted中
 unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     double score;
@@ -1122,7 +1122,7 @@ unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsig
     if (deleted != NULL) *deleted = num;
     return zl;
 }
-// 删除ziplist中分值在制定字典序范围内的元素，并保存删除的数量在deleted中
+// 删除ziplist中分值在制定字典序范围内的元素,并保存删除的数量在deleted中
 unsigned char *zzlDeleteRangeByLex(unsigned char *zl, zlexrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     unsigned long num = 0;
@@ -1920,7 +1920,7 @@ int zuiLongLongFromValue(zsetopval *val) {
     return val->flags & OPVAL_VALID_LL;
 }
 
-// 根据val中的值，创建对象
+// 根据val中的值,创建对象
 robj *zuiObjectFromValue(zsetopval *val) {
     if (val->ele == NULL) {
         if (val->estr != NULL) {
@@ -2100,7 +2100,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
             if (remaining >= (setnum + 1) && !strcasecmp(c->argv[j]->ptr,"weights")) {
                 j++; remaining--;
                 for (i = 0; i < setnum; i++, j++, remaining--) {
-                    // 遍历设置的weight，保存到每个集合对象的迭代器中
+                    // 遍历设置的weight,保存到每个集合对象的迭代器中
                     if (getDoubleFromObjectOrReply(c,c->argv[j],&src[i].weight,
                             "weight value is not a float") != C_OK)
                     {
@@ -2204,7 +2204,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
         if (setnum) {
             /* Our union is at least as large as the largest set.
              * Resize the dictionary ASAP to avoid useless rehashing. */
-            // 计算出最大有序集合元素个数，并集至少和最大的集合一样大，因此按需扩展结果集字典集至少跟最大集合的一样
+            // 计算出最大有序集合元素个数,并集至少和最大的集合一样大,因此按需扩展结果集字典集至少跟最大集合的一样
             dictExpand(accumulator,zuiLength(&src[setnum-1]));
         }
 

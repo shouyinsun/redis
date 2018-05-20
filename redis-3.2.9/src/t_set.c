@@ -32,9 +32,9 @@
  * 一个集合类型的对象的编码有两种:OBJ_ENCODING_HT和OBJ_ENCODING_INTSET。
  * 
  * 编码的转换：
- * 1.redis的配置文件中的选项：如果数据编码为整数集合的集合对象的元素数量超过 set-max-intset-entries 阈值，则会转换编码
+ * 1.redis的配置文件中的选项：如果数据编码为整数集合的集合对象的元素数量超过 set-max-intset-entries 阈值,则会转换编码
     set-max-intset-entries  512
-   2.向数据编码为整数集合的集合对象插入字符串类型的对象，则会转换编码
+   2.向数据编码为整数集合的集合对象插入字符串类型的对象,则会转换编码
  * 
  * **/
 #include "server.h"
@@ -170,7 +170,7 @@ void setTypeReleaseIterator(setTypeIterator *si) {
  * Returned objects ref count is not incremented, so this function is
  * copy on write friendly. */
 
-//将当前迭代器指向的元素保存在objele或llele中，迭代完毕返回-1
+//将当前迭代器指向的元素保存在objele或llele中,迭代完毕返回-1
 int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
     if (si->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictNext(si->di);
@@ -196,7 +196,7 @@ int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
  * an issue as the result will be anyway of incrementing the ref count. */
 
 
-//返回迭代器当前指向的元素对象的地址，需要手动释放返回的对象
+//返回迭代器当前指向的元素对象的地址,需要手动释放返回的对象
 robj *setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
     robj *objele;
@@ -830,12 +830,12 @@ void sinterGenericCommand(client *c, robj **setkeys,
     int encoding;
 
     for (j = 0; j < setnum; j++) {
-        // 如果dstkey为空，则是SINTER命令，不为空则是SINTERSTORE命令
-        // 如果是SINTER命令，则以读操作读取出集合对象，否则以写操作读取出集合对象
+        // 如果dstkey为空,则是SINTER命令,不为空则是SINTERSTORE命令
+        // 如果是SINTER命令,则以读操作读取出集合对象,否则以写操作读取出集合对象
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
-        if (!setobj) {// 读取的集合对象不存在，执行清理操作
+        if (!setobj) {// 读取的集合对象不存在,执行清理操作
             zfree(sets);
             if (dstkey) { //从数据库中删除存储的目标集合对象dstkey
                 if (dbDelete(c->db,dstkey)) {
@@ -843,7 +843,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
                     server.dirty++;
                 }
                 addReply(c,shared.czero);
-            } else {// 如果是SINTER命令，发送空回复
+            } else {// 如果是SINTER命令,发送空回复
                 addReply(c,shared.emptymultibulk);
             }
             return;
@@ -858,7 +858,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
     /* Sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
 
-    // 从小到大排序集合数组中的集合的大小，能够提高算法的性能
+    // 从小到大排序集合数组中的集合的大小,能够提高算法的性能
     qsort(sets,setnum,sizeof(robj*),qsortCompareSetsByCardinality);
 
     /* The first thing we should output is the total number of elements...
@@ -867,8 +867,8 @@ void sinterGenericCommand(client *c, robj **setkeys,
      * to the output list and save the pointer to later modify it with the
      * right length */
 
-    // 首先应该输出集合中元素的数量，但是现在不知道交集的大小
-    // 因此创建一个空对象的链表，然后保存所有的回复
+    // 首先应该输出集合中元素的数量,但是现在不知道交集的大小
+    // 因此创建一个空对象的链表,然后保存所有的回复
     if (!dstkey) {
         replylen = addDeferredMultiBulkLength(c);// STINER命令创建一个链表
     } else {
@@ -921,13 +921,13 @@ void sinterGenericCommand(client *c, robj **setkeys,
 
         /* Only take action when all sets contain the member */
         if (j == setnum) {//只有在j=setnum时,才是所有集合都有这个元素
-            if (!dstkey) {//如果是SINTER命令，回复集合
+            if (!dstkey) {//如果是SINTER命令,回复集合
                 if (encoding == OBJ_ENCODING_HT)
                     addReplyBulk(c,eleobj);
                 else
                     addReplyBulkLongLong(c,intobj);
                 cardinality++;
-            } else { //如果是SINTERSTORE命令，先将结果添加到集合中，因为还要store到数据库中
+            } else { //如果是SINTERSTORE命令,先将结果添加到集合中,因为还要store到数据库中
                 if (encoding == OBJ_ENCODING_INTSET) {
                     eleobj = createStringObjectFromLongLong(intobj);
                     setTypeAdd(dstset,eleobj);
@@ -940,7 +940,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
     }
     setTypeReleaseIterator(si);
 
-    if (dstkey) {// SINTERSTORE命令，要将结果的集合添加到数据库中
+    if (dstkey) {// SINTERSTORE命令,要将结果的集合添加到数据库中
         /* Store the resulting set into the target, if the intersection
          * is not an empty set. */
         int deleted = dbDelete(c->db,dstkey);
@@ -958,7 +958,7 @@ void sinterGenericCommand(client *c, robj **setkeys,
         }
         signalModifiedKey(c->db,dstkey);
         server.dirty++;
-    } else {// SINTER命令，回复结果集合给client
+    } else {// SINTER命令,回复结果集合给client
         setDeferredMultiBulkLength(c,replylen,cardinality);
     }
     zfree(sets);
@@ -993,8 +993,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
     int diff_algo = 1;
 
     for (j = 0; j < setnum; j++) {
-        // 如果dstkey为空，则是SUNION或SDIFF命令，不为空则是SUNIONSTORE或SDIFFSTORE命令
-        // 如果是SUNION或SDIFF命令，则以读操作读取出集合对象，否则以写操作读取出集合对象
+        // 如果dstkey为空,则是SUNION或SDIFF命令,不为空则是SUNIONSTORE或SDIFFSTORE命令
+        // 如果是SUNION或SDIFF命令,则以读操作读取出集合对象,否则以写操作读取出集合对象
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
@@ -1021,8 +1021,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
     //差集
     if (op == SET_OP_DIFF && sets[0]) {
         // 计算差集共有两种算法
-        // 1.时间复杂度O(N*M)，N是第一个集合中元素的总个数，M是集合的总个数
-        // 2.时间复杂度O(N)，N是所有集合中元素的总个数
+        // 1.时间复杂度O(N*M),N是第一个集合中元素的总个数,M是集合的总个数
+        // 2.时间复杂度O(N),N是所有集合中元素的总个数
         long long algo_one_work = 0, algo_two_work = 0;
 
         for (j = 0; j < setnum; j++) {
@@ -1039,12 +1039,12 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
         //根据algo_one_work和algo_two_work选择不同算法
         diff_algo = (algo_one_work <= algo_two_work) ? 1 : 2;
 
-        //如果是算法1，M较小，执行操作少
+        //如果是算法1,M较小,执行操作少
         if (diff_algo == 1 && setnum > 1) {
             /* With algorithm 1 it is better to order the sets to subtract
              * by decreasing size, so that we are more likely to find
              * duplicated elements ASAP. */
-            //集合数组除第一个集合以外的所有集合，按照集合的元素Cardinality 倒排序
+            //集合数组除第一个集合以外的所有集合,按照集合的元素Cardinality 倒排序
             qsort(sets+1,setnum-1,sizeof(robj*),
                 qsortCompareSetsByRevCardinality);
         }

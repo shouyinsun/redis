@@ -100,10 +100,10 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
 
 //以读操作取出key的值对象 没找到返回NULL
 // 调用该函数的副作用如下：
-// 1.如果一个键的到达过期时间TTL，该键被设置为过期的
+// 1.如果一个键的到达过期时间TTL,该键被设置为过期的
 // 2.键的使用时间信息被更新
 // 3.全局键 hits/misses 状态被更新
-// 如果键在逻辑上已经过期但是仍然存在，函数返回NULL
+// 如果键在逻辑上已经过期但是仍然存在,函数返回NULL
 robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
     robj *val;
 
@@ -128,8 +128,8 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
          *
          * Notably this covers GETs when slaves are used to scale reads. */
 
-        //从节点环境， expireIfNeeded()函数不会删除过期的键，它返回的仅仅是键是否被删除的逻辑值
-        //过期的键由主节点负责，为了保证主从节点数据的一致
+        //从节点环境, expireIfNeeded()函数不会删除过期的键,它返回的仅仅是键是否被删除的逻辑值
+        //过期的键由主节点负责,为了保证主从节点数据的一致
         if (server.current_client &&
             server.current_client != server.master &&
             server.current_client->cmd &&
@@ -138,7 +138,7 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
             return NULL;
         }
     }
-    //键没有过期，则返回键的值对象
+    //键没有过期,则返回键的值对象
     val = lookupKey(db,key,flags);
     //更新  misses 和 hits 信息
     if (val == NULL)
@@ -543,7 +543,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
 
     /* Object must be NULL (to iterate keys names), or the type of the object
      * must be Set, Sorted Set, or Hash. */
-    //输入类型的检查，要么迭代键名，要么当前集合对象，要么迭代哈希对象，要么迭代有序集合对象
+    //输入类型的检查,要么迭代键名,要么当前集合对象,要么迭代哈希对象,要么迭代有序集合对象
     serverAssert(o == NULL || o->type == OBJ_SET || o->type == OBJ_HASH ||
                 o->type == OBJ_ZSET);
 
@@ -554,7 +554,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     // 1. 解析选项
     while (i < c->argc) {
         j = c->argc - i;
-        // 设定COUNT参数，COUNT 选项的作用就是让用户告知迭代命令， 在每次迭代中应该返回多少元素
+        // 设定COUNT参数,COUNT 选项的作用就是让用户告知迭代命令, 在每次迭代中应该返回多少元素
         if (!strcasecmp(c->argv[i]->ptr, "count") && j >= 2) {
             if (getLongFromObjectOrReply(c, c->argv[i+1], &count, NULL)
                 != C_OK)
@@ -568,14 +568,14 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
             }
 
             i += 2;
-        // 设定MATCH参数，让命令只返回和给定模式相匹配的元素
+        // 设定MATCH参数,让命令只返回和给定模式相匹配的元素
         } else if (!strcasecmp(c->argv[i]->ptr, "match") && j >= 2) {
             pat = c->argv[i+1]->ptr;
             patlen = sdslen(pat);
 
             /* The pattern always matches if it is exactly "*", so it is
              * equivalent to disabling it. */
-            // 如果pattern是"*"，就不用匹配，全部返回，设置为0
+            // 如果pattern是"*",就不用匹配,全部返回,设置为0
             use_pattern = !(pat[0] == '*' && patlen == 1);
 
             i += 2;
@@ -594,8 +594,8 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
      * cursor to zero to signal the end of the iteration. */
 
     /* Handle the case of a hash table. */
-    // 2.如果对象是ziplist、intset或其他而不是哈希表，那么这些类型只是包含少量的元素
-    // 我们一次将其所有的元素全部返回给调用者，并设置游标cursor为0，标示迭代完成
+    // 2.如果对象是ziplist、intset或其他而不是哈希表,那么这些类型只是包含少量的元素
+    // 我们一次将其所有的元素全部返回给调用者,并设置游标cursor为0,标示迭代完成
     ht = NULL;
     if (o == NULL) {// 迭代目标是数据库
         ht = c->db->dict;
@@ -625,7 +625,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
          * it is possible to fetch more data in a type-dependent way. */
         privdata[0] = keys;
         privdata[1] = o;
-        // 循环扫描ht，从游标cursor开始，调用指定的scanCallback函数，提出ht中的数据到刚开始创建的列表keys中
+        // 循环扫描ht,从游标cursor开始,调用指定的scanCallback函数,提出ht中的数据到刚开始创建的列表keys中
         do {
             cursor = dictScan(ht, cursor, scanCallback, privdata);
         } while (cursor &&
@@ -657,7 +657,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     }
 
     /* Step 3: Filter elements. */
-    // 3. 如果设置MATCH参数，要进行过滤
+    // 3. 如果设置MATCH参数,要进行过滤
     node = listFirst(keys);//链表首节点地址
     while (node) {
         robj *kobj = listNodeValue(node);//key对象
@@ -709,7 +709,7 @@ void scanGenericCommand(client *c, robj *o, unsigned long cursor) {
     addReplyBulkLongLong(c,cursor);
 
     addReplyMultiBulkLen(c, listLength(keys));
-    //循环回复列表中的元素，并释放
+    //循环回复列表中的元素,并释放
     while ((node = listFirst(keys)) != NULL) {
         robj *kobj = listNodeValue(node);
         addReplyBulk(c, kobj);
@@ -796,7 +796,7 @@ void renameGenericCommand(client *c, int nx) {
 
     /* When source and dest key is the same, no operation is performed,
      * if the key exists, however we still return an error on unexisting key. */
-    // key和newkey相同的话，设置samekey标志
+    // key和newkey相同的话,设置samekey标志
     if (sdscmp(c->argv[1]->ptr,c->argv[2]->ptr) == 0) samekey = 1;
 
 
@@ -804,13 +804,13 @@ void renameGenericCommand(client *c, int nx) {
     if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr)) == NULL)
         return;
 
-    if (samekey) {// 如果key和newkey相同，nx为1发送0，否则为ok
+    if (samekey) {// 如果key和newkey相同,nx为1发送0,否则为ok
         addReply(c,nx ? shared.czero : shared.ok);
         return;
     }
-    // 增加值对象的引用计数，保护起来，用于关联newkey，以防删除了key顺带将值对象也删除
+    // 增加值对象的引用计数,保护起来,用于关联newkey,以防删除了key顺带将值对象也删除
     incrRefCount(o);
-    // 备份key的过期时间，将来作为newkey的过期时间
+    // 备份key的过期时间,将来作为newkey的过期时间
     expire = getExpire(c->db,c->argv[1]);
     // 判断newkey的值对象是否存在
     if (lookupKeyWrite(c->db,c->argv[2]) != NULL) {
@@ -825,7 +825,7 @@ void renameGenericCommand(client *c, int nx) {
     }
     // 将newkey和key的值对象关联
     dbAdd(c->db,c->argv[2],o);
-    // 如果newkey设置过过期时间，则为newkey设置过期时间
+    // 如果newkey设置过过期时间,则为newkey设置过期时间
     if (expire != -1) setExpire(c->db,c->argv[2],expire);
     dbDelete(c->db,c->argv[1]);
     signalModifiedKey(c->db,c->argv[1]);
@@ -855,7 +855,7 @@ void moveCommand(client *c) {
     int srcid;
     long long dbid, expire;
 
-    // 服务器处于集群模式，不支持多数据库
+    // 服务器处于集群模式,不支持多数据库
     if (server.cluster_enabled) {
         addReplyError(c,"MOVE is not allowed in cluster mode");
         return;
@@ -866,7 +866,7 @@ void moveCommand(client *c) {
     src = c->db;
     srcid = c->db->id;
 
-    //将参数db的值保存到dbid，并且切换到该数据库中
+    //将参数db的值保存到dbid,并且切换到该数据库中
     if (getLongLongFromObject(c->argv[2],&dbid) == C_ERR ||
         dbid < INT_MIN || dbid > INT_MAX ||
         selectDb(c,dbid) == C_ERR)
@@ -881,7 +881,7 @@ void moveCommand(client *c) {
 
     /* If the user is moving using as target the same
      * DB as the source DB it is probably an error. */
-    //如果前后切换的数据库相同，则返回有关错误
+    //如果前后切换的数据库相同,则返回有关错误
     if (src == dst) {
         addReply(c,shared.sameobjecterr);
         return;
@@ -898,7 +898,7 @@ void moveCommand(client *c) {
     expire = getExpire(c->db,c->argv[1]);
 
     /* Return zero if the key already exists in the target DB */
-    //判断当前key是否存在于目标数据库，存在直接返回，发送0
+    //判断当前key是否存在于目标数据库,存在直接返回,发送0
     if (lookupKeyWrite(dst,c->argv[1]) != NULL) {
         addReply(c,shared.czero);
         return;
@@ -984,16 +984,16 @@ void propagateExpire(redisDb *db, robj *key) {
 
 
 //过期操作,删除key (惰性删除)
-//返回0表示没有过期或没有过期时间，返回1 表示键被删除
+//返回0表示没有过期或没有过期时间,返回1 表示键被删除
 int expireIfNeeded(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
 
-    //得到过期时间，单位毫秒
+    //得到过期时间,单位毫秒
     if (when < 0) return 0; /* No expire for this key */
 
     /* Don't expire anything while loading. It will be done later. */
-    // 服务器正在载入，那么不进行过期检查
+    // 服务器正在载入,那么不进行过期检查
     if (server.loading) return 0;
 
     /* If we are in the context of a Lua script, we claim that time is
@@ -1063,11 +1063,11 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
      * Instead we take the other branch of the IF statement setting an expire
      * (possibly in the past) and wait for an explicit DEL from the master. */
 
-    // 如果当前正在载入AOF数据或者在从节点环境中，即使EXPIRE的TTL为负数，或者EXPIREAT的时间戳已经过期
-    // 服务器都不会执行DEL命令，且将过期TTL设置为键的过期时间，等待主节点发来的DEL命令
+    // 如果当前正在载入AOF数据或者在从节点环境中,即使EXPIRE的TTL为负数,或者EXPIREAT的时间戳已经过期
+    // 服务器都不会执行DEL命令,且将过期TTL设置为键的过期时间,等待主节点发来的DEL命令
 
 
-    if (when <= mstime() && !server.loading && !server.masterhost) {//如果when已经过时，服务器为主节点且没有载入AOF数据
+    if (when <= mstime() && !server.loading && !server.masterhost) {//如果when已经过时,服务器为主节点且没有载入AOF数据
         robj *aux;
 
         // 将key从数据库中删除
@@ -1086,8 +1086,8 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
         notifyKeyspaceEvent(NOTIFY_GENERIC,"del",key,c->db->id);
         addReply(c, shared.cone);
         return;
-    } else {// 如果当前服务器是从节点，或者服务器正在载入AOF数据
-            // 不管when有没有过时，都设置为过期时间
+    } else {// 如果当前服务器是从节点,或者服务器正在载入AOF数据
+            // 不管when有没有过时,都设置为过期时间
         setExpire(c->db,key,when);
         addReply(c,shared.cone);
         signalModifiedKey(c->db,key);
@@ -1114,19 +1114,19 @@ void pexpireatCommand(client *c) {
 }
 
 
-// TTL、PTTL命令底层实现，output_ms为1，返回毫秒，为0返回秒
+// TTL、PTTL命令底层实现,output_ms为1,返回毫秒,为0返回秒
 void ttlGenericCommand(client *c, int output_ms) {
     long long expire, ttl = -1;
 
     /* If the key does not exist at all, return -2 */
-    // 判断key是否存在于数据库，并且不修改键的使用时间
+    // 判断key是否存在于数据库,并且不修改键的使用时间
     if (lookupKeyReadWithFlags(c->db,c->argv[1],LOOKUP_NOTOUCH) == NULL) {
         addReplyLongLong(c,-2);
         return;
     }
     /* The key exists. Return -1 if it has no expire, or the actual
      * TTL value otherwise. */
-    // 如果key存在，则备份当前key的过期时间
+    // 如果key存在,则备份当前key的过期时间
     expire = getExpire(c->db,c->argv[1]);
     if (expire != -1) {//计算ttl
         ttl = expire-mstime();

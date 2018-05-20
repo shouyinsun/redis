@@ -37,6 +37,23 @@
  *
  * The function returns -1 if the input contains characters not mapping to
  * any class. */
+
+/***
+ * 
+ * 客户端可以通过 订阅与发布功能（pub/sub）功能,来接收那些以某种方式改动了Redis数据集的事件
+ * Redis的订阅与发布功能采用的是发送即忘（fire and forget）的策略,当订阅事件的客户端断线时,它会丢失所有在断线期间分发给它的事件
+ * 
+ * ****/
+
+
+/**
+ * 两种通知类型：
+ * 键空间通知（key-space notification）
+ * 键事件通知（key-event notification）
+ * 
+ * **/
+
+//事件字符标识转成flags
 int keyspaceEventsStringToFlags(char *classes) {
     char *p = classes;
     int c, flags = 0;
@@ -64,6 +81,7 @@ int keyspaceEventsStringToFlags(char *classes) {
  * as input an integer with the xored flags and returns a string representing
  * the selected classes. The string returned is an sds string that needs to
  * be released with sdsfree(). */
+//事件的flag转字符标识
 sds keyspaceEventsFlagsToString(int flags) {
     sds res;
 
@@ -92,6 +110,11 @@ sds keyspaceEventsFlagsToString(int flags) {
  * 'event' is a C string representing the event name.
  * 'key' is a Redis object representing the key name.
  * 'dbid' is the database ID where the key lives.  */
+
+
+// event 是一个字符串类型的事件名
+// key 是一个对象代表一个键名
+// dbid 是数据库id
 void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
     sds chan;
     robj *chanobj, *eventobj;
@@ -103,6 +126,7 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
 
     eventobj = createStringObject(event,strlen(event));
 
+    //键空间通知格式 
     /* __keyspace@<db>__:<key> <event> notifications. */
     if (server.notify_keyspace_events & NOTIFY_KEYSPACE) {
         chan = sdsnewlen("__keyspace@",11);
@@ -115,6 +139,7 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
         decrRefCount(chanobj);
     }
 
+    //键事件通知格式
     /* __keyevente@<db>__:<event> <key> notifications. */
     if (server.notify_keyspace_events & NOTIFY_KEYEVENT) {
         chan = sdsnewlen("__keyevent@",11);
@@ -123,6 +148,8 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
         chan = sdscatlen(chan, "__:", 3);
         chan = sdscatsds(chan, eventobj->ptr);
         chanobj = createObject(OBJ_STRING, chan);
+
+        //发布消息
         pubsubPublishMessage(chanobj, key);
         decrRefCount(chanobj);
     }
