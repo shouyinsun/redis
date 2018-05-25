@@ -32,10 +32,14 @@
 #include <sys/epoll.h>
 
 typedef struct aeApiState {
+    // epoll事件的文件描述符
     int epfd;
+    // 事件表
     struct epoll_event *events;
-} aeApiState;
+} aeApiState; //事件的状态
 
+
+// 创建一个epoll实例，保存到eventLoop中
 static int aeApiCreate(aeEventLoop *eventLoop) {
     aeApiState *state = zmalloc(sizeof(aeApiState));
 
@@ -55,6 +59,7 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
     return 0;
 }
 
+// 调整事件表的大小
 static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
     aeApiState *state = eventLoop->apidata;
 
@@ -62,6 +67,7 @@ static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
     return 0;
 }
 
+// 释放epoll实例和事件表空间
 static void aeApiFree(aeEventLoop *eventLoop) {
     aeApiState *state = eventLoop->apidata;
 
@@ -70,23 +76,31 @@ static void aeApiFree(aeEventLoop *eventLoop) {
     zfree(state);
 }
 
+// 在epfd标识的事件表上注册fd的事件
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
     struct epoll_event ee = {0}; /* avoid valgrind warning */
     /* If the fd was already monitored for some event, we need a MOD
      * operation. Otherwise we need an ADD operation. */
+
+    // EPOLL_CTL_ADD，向epfd注册fd的上的event
+    // EPOLL_CTL_MOD，修改fd已注册的event
     int op = eventLoop->events[fd].mask == AE_NONE ?
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
     ee.events = 0;
+    // 如果是修改事件，合并之前的事件类型
     mask |= eventLoop->events[fd].mask; /* Merge old events */
+    // 根据mask映射epoll的事件类型
     if (mask & AE_READABLE) ee.events |= EPOLLIN;
     if (mask & AE_WRITABLE) ee.events |= EPOLLOUT;
     ee.data.fd = fd;
+    // 将ee事件注册到epoll中
     if (epoll_ctl(state->epfd,op,fd,&ee) == -1) return -1;
     return 0;
 }
 
+// 在epfd标识的事件表上注删除fd的事件
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     aeApiState *state = eventLoop->apidata;
     struct epoll_event ee = {0}; /* avoid valgrind warning */
@@ -105,16 +119,20 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     }
 }
 
+// 等待所监听文件描述符上事件发生
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     int retval, numevents = 0;
 
+    // 监听事件表上是否有事件发生
     retval = epoll_wait(state->epfd,state->events,eventLoop->setsize,
             tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
+    // 至少有一个就绪的事件
     if (retval > 0) {
         int j;
 
         numevents = retval;
+        // 遍历就绪的事件表，将其加入到eventLoop的就绪事件表中
         for (j = 0; j < numevents; j++) {
             int mask = 0;
             struct epoll_event *e = state->events+j;
@@ -130,6 +148,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     return numevents;
 }
 
+// 返回正在使用的IO多路复用库的名字
 static char *aeApiName(void) {
     return "epoll";
 }
