@@ -636,53 +636,83 @@ typedef struct readyList {
  * Clients are taken in a linked list. */
 //redis client
 typedef struct client {
+    // client的ID
     uint64_t id;            /* Client incremental unique ID. */
+    // client的套接字 当前客户端状态描述符
     int fd;                 /* Client socket. */
-    //client当前使用的数据库
+    // client当前使用的数据库
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     int dictid;             /* ID of the currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
+    // 输入缓存区
     sds querybuf;           /* Buffer we use to accumulate client queries. */
+    // 输入缓存区的峰值
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. */
+    // 参数个数
     int argc;               /* Num of arguments of current command. */
+    // 参数列表
     robj **argv;            /* Arguments of current command. */
+    // 当前执行的命令和最近一次执行的命令
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
+    // 请求协议类型，内联或者多条命令，初始化为0
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
+    // 查询缓冲区剩余未读取命令的数量
     int multibulklen;       /* Number of multi bulk arguments left to read. */
+    // 读入参数的长度
     long bulklen;           /* Length of bulk argument in multi bulk request. */
+    // 回复链表
     list *reply;            /* List of reply objects to send to the client. */
+    // 回复链表的字节数
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
+    // 已发的字节数
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
+    // 设置创建client的时间和最后一次互动的时间
     time_t ctime;           /* Client creation time. */
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
+    // 回复缓冲区的内存大小软限制
     time_t obuf_soft_limit_reached_time;
+    // client的状态
     int flags;              /* Client flags: CLIENT_* macros. */
+    // 认证状态
     int authenticated;      /* When requirepass is non-NULL. */
+    // replication复制的状态，初始为无
     int replstate;          /* Replication state if this is a slave. */
+    // 设置从节点的写处理器为ack，是否在slave向master发送ack
     int repl_put_online_on_ack; /* Install slave write handler on ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
     off_t repldboff;        /* Replication DB file offset. */
     off_t repldbsize;       /* Replication DB file size. */
     sds replpreamble;       /* Replication DB preamble. */
+    // replication复制的偏移量
     long long reploff;      /* Replication offset if this is our master. */
+    // 通过ack命令接收到的偏移量
     long long repl_ack_off; /* Replication ack offset, if this is a slave. */
+    // 通过ack命令接收到的偏移量所用的时间
     long long repl_ack_time;/* Replication ack time, if this is a slave. */
     long long psync_initial_offset; /* FULLRESYNC reply offset other slaves
                                        copying this slave output buffer
                                        should use. */
     char replrunid[CONFIG_RUN_ID_SIZE+1]; /* Master run id if is a master. */
+    // 从节点的端口号
     int slave_listening_port; /* As configured with: REPLCONF listening-port */
+    // 从节点IP地址
     char slave_ip[NET_IP_STR_LEN]; /* Optionally given by REPLCONF ip-address */
+    // 从节点的功能
     int slave_capa;         /* Slave capabilities: SLAVE_CAPA_* bitwise OR. */
     multiState mstate;      /* MULTI/EXEC state */
     int btype;              /* Type of blocking op if CLIENT_BLOCKED. */
     //阻塞状态
     blockingState bpop;     /* blocking state */
+    // 全局的复制偏移量
     long long woff;         /* Last write global replication offset. */
+    // 监控的键
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
+    // 订阅频道
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
+    // 订阅模式
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
+    // 被缓存的peerid，peerid就是 ip:port
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */

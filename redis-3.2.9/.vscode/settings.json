@@ -5,6 +5,7 @@
         "config.h": "c",
         "math.h": "c",
         "server.h": "c",
-        "util.h": "c"
+        "util.h": "c",
+        "testhelp.h": "c"
     }
 }
