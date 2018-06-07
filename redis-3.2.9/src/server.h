@@ -388,6 +388,11 @@ typedef long long mstime_t; /* millisecond time type. */
 #define SET_OP_INTER 2
 
 /* Redis maxmemory strategies */
+/*** 主要三种策略
+LRU：优先删除最近最少使用的键。
+TTL：优先删除生存时间最短的键。
+RANDOM：随机删除。
+ * ***/
 #define MAXMEMORY_VOLATILE_LRU 0
 #define MAXMEMORY_VOLATILE_TTL 1
 #define MAXMEMORY_VOLATILE_RANDOM 2
@@ -395,6 +400,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define MAXMEMORY_ALLKEYS_RANDOM 4
 #define MAXMEMORY_NO_EVICTION 5
 #define CONFIG_DEFAULT_MAXMEMORY_POLICY MAXMEMORY_NO_EVICTION
+
+
 
 /* Scripting */
 #define LUA_SCRIPT_TIME_LIMIT 5000 /* milliseconds */
@@ -410,6 +417,16 @@ typedef long long mstime_t; /* millisecond time type. */
 #define SHUTDOWN_NOSAVE 2       /* Don't SAVE on SHUTDOWN. */
 
 /* Command call flags, see call() function */
+
+/***
+CMD_CALL_NONE：没有指定flags
+CMD_CALL_SLOWLOG：检查命令的执行速度，如果需要记录在慢查询日志中
+CMD_CALL_STATS：记录命令的统计信息
+CMD_CALL_PROPAGATE_AOF：如果client设置了强制传播的标志或修改了数据集，则将命令追加到AOF文件中
+CMD_CALL_PROPAGATE_REPL：如果client设置了强制传播的标志或修改了数据集，则将命令发送给从节点服务器中
+CMD_CALL_PROPAGATE：如果client设置了强制传播的标志或修改了数据集，则将命令发送给从节点服务器或追加到AOF中
+CMD_CALL_FULL：包含以上所有的含义 
+ ****/
 #define CMD_CALL_NONE 0
 #define CMD_CALL_SLOWLOG (1<<0)
 #define CMD_CALL_STATS (1<<1)
