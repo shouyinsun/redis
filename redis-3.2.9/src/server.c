@@ -1329,7 +1329,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Replication cron function -- used to reconnect to master,
      * detect transfer failures, start background RDB transfers and so forth. */
-    run_with_period(1000) replicationCron();// 周期性执行复制的任务
+    run_with_period(1000) replicationCron();// 周期性执行复制的任务 1s一次
 
     /* Run the Redis Cluster cron. */
     run_with_period(100) { // 周期性执行集群任务
@@ -1918,6 +1918,7 @@ void resetServerStats(void) {
     server.aof_delayed_fsync = 0;
 }
 
+//Redis服务器初始化
 void initServer(void) {
     int j;
 
@@ -2013,6 +2014,7 @@ void initServer(void) {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
+
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create the serverCron time event.");
         exit(1);

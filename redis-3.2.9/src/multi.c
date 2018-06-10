@@ -29,6 +29,29 @@
 
 #include "server.h"
 
+
+/*****
+ * 事务提供了一种将多个命令请求打包,然后一次性、按顺序地执行多个命令的机制
+ * 并且在事务的执行期间,服务器不会打断事务而改去执行其他客户端的命令请求
+ * 它会将事务中的所有命令都执行完毕,然后才去执行其他客户端的命令请求。 
+- Redis中的事务（transaction）是一组命令的集合。事务同命令一样都是Redis中的最小执行单位,一个事务中的命令要么都执行,要么都不执行。
+
+Redis事务（transaction）提供了以下五个命令,用于用户操作事务功能,其分别是：
+MULTI	标记一个事务块的开始
+DISCARD	放弃执行事务
+EXEC	执行事务中的所有命令
+WATCH	监视一个或多个key,如果至少有一个key在EXEC之前被修改,则放弃执行事务
+UNWATCH	取消WATCH命令对所有键的监视
+
+
+
+执行事务的过程分为以下的几个阶段：
+开始事务
+命令入队
+执行事务
+ * 
+ * 
+ * ******/
 /* ================================ MULTI/EXEC ============================== */
 
 /* Client state initialization for MULTI/EXEC */
@@ -53,19 +76,24 @@ void freeClientMultiState(client *c) {
 }
 
 /* Add a new command into the MULTI commands queue */
+//事务命令入队列
 void queueMultiCommand(client *c) {
     multiCmd *mc;
     int j;
-
+    // 增加队列的空间
     c->mstate.commands = zrealloc(c->mstate.commands,
             sizeof(multiCmd)*(c->mstate.count+1));
+    // 获取新命令的存放地址
     mc = c->mstate.commands+c->mstate.count;
+    // 设置新命令的参数列表、参数数量和命令函数
     mc->cmd = c->cmd;
     mc->argc = c->argc;
     mc->argv = zmalloc(sizeof(robj*)*c->argc);
     memcpy(mc->argv,c->argv,sizeof(robj*)*c->argc);
+    // 增加引用计数
     for (j = 0; j < c->argc; j++)
         incrRefCount(mc->argv[j]);
+    // 事务命令个数加1
     c->mstate.count++;
 }
 
@@ -84,11 +112,14 @@ void flagTransaction(client *c) {
 }
 
 void multiCommand(client *c) {
+    // 客户端已经处于事务状态,回复错误后返回
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"MULTI calls can not be nested");
         return;
     }
+    // 打开客户的的事务状态标识
     c->flags |= CLIENT_MULTI;
+    // 回复OK
     addReply(c,shared.ok);
 }
 
@@ -111,13 +142,16 @@ void execCommandPropagateMulti(client *c) {
     decrRefCount(multistring);
 }
 
+
+// 执行事务
 void execCommand(client *c) {
     int j;
     robj **orig_argv;
     int orig_argc;
     struct redisCommand *orig_cmd;
+    // 是否传播的标识
     int must_propagate = 0; /* Need to propagate MULTI/EXEC to AOF / slaves? */
-
+    // 如果客户端当前不处于事务状态,回复错误后返回
     if (!(c->flags & CLIENT_MULTI)) {
         addReplyError(c,"EXEC without MULTI");
         return;
@@ -129,20 +163,36 @@ void execCommand(client *c) {
      * A failed EXEC in the first case returns a multi bulk nil object
      * (technically it is not an error but a special behavior), while
      * in the second an EXECABORT error is returned. */
+    // 检查是否需要中断EXEC的执行因为：
+    /*
+        1. 被监控的key被修改
+        2. 入队命令时发生了错误
+    */
+    // 第一种情况返回空回复对象,第二种情况返回一个EXECABORT错误
+    // 如果客户的处于 1.命令入队时错误或者2.被监控的key被修改
     if (c->flags & (CLIENT_DIRTY_CAS|CLIENT_DIRTY_EXEC)) {
+        // 回复错误信息
         addReply(c, c->flags & CLIENT_DIRTY_EXEC ? shared.execaborterr :
                                                   shared.nullmultibulk);
+        // 取消事务
         discardTransaction(c);
+        // 跳转到处理监控器代码
         goto handle_monitor;
     }
 
     /* Exec all the queued commands */
+    // 执行队列数组中的命令
+    // 因为所有的命令都是安全的,因此取消对客户端的所有的键的监视
     unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
+    // 备份EXEC命令
     orig_argv = c->argv;
     orig_argc = c->argc;
     orig_cmd = c->cmd;
+    // 回复一个事务命令的个数
     addReplyMultiBulkLen(c,c->mstate.count);
+    // 遍历执行所有事务命令
     for (j = 0; j < c->mstate.count; j++) {
+        // 设置一个当前事务命令给客户端
         c->argc = c->mstate.commands[j].argc;
         c->argv = c->mstate.commands[j].argv;
         c->cmd = c->mstate.commands[j].cmd;
@@ -151,24 +201,30 @@ void execCommand(client *c) {
          * This way we'll deliver the MULTI/..../EXEC block as a whole and
          * both the AOF and the replication link will have the same consistency
          * and atomicity guarantees. */
+        // 当执行到第一个写命令时,传播事务状态
         if (!must_propagate && !(c->cmd->flags & CMD_READONLY)) {
+            // 发送一个MULTI命令给所有的从节点和AOF文件
             execCommandPropagateMulti(c);
+            // 设置已经传播过的标识
             must_propagate = 1;
         }
-
+        // 执行该命令
         call(c,CMD_CALL_FULL);
-
+        // 命令可能会被修改,重新存储在事务命令队列中
         /* Commands may alter argc/argv, restore mstate. */
         c->mstate.commands[j].argc = c->argc;
         c->mstate.commands[j].argv = c->argv;
         c->mstate.commands[j].cmd = c->cmd;
     }
+    // 还原命令和参数
     c->argv = orig_argv;
     c->argc = orig_argc;
     c->cmd = orig_cmd;
+    // 取消事务状态
     discardTransaction(c);
     /* Make sure the EXEC command will be propagated as well if MULTI
      * was already propagated. */
+    // 如果传播了EXEC命令,表示执行了写命令,更新数据库脏键数
     if (must_propagate) server.dirty++;
 
 handle_monitor:
@@ -177,6 +233,7 @@ handle_monitor:
      * MUTLI, EXEC, ... commands inside transaction ...
      * Instead EXEC is flagged as CMD_SKIP_MONITOR in the command
      * table, and we do it here with correct ordering. */
+    // 如果服务器设置了监控器,并且服务器不处于载入文件的状态
     if (listLength(server.monitors) && !server.loading)
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
@@ -194,7 +251,9 @@ handle_monitor:
  * as in order to identify a key in Redis we need both the key name and the
  * DB */
 typedef struct watchedKey {
+    // 被监视的key
     robj *key;
+    // 被监视的key所在的数据库
     redisDb *db;
 } watchedKey;
 
@@ -207,20 +266,28 @@ void watchForKey(client *c, robj *key) {
 
     /* Check if we are already watching for this key */
     listRewind(c->watched_keys,&li);
+    // 遍历客户端监视的键的链表,检查是否已经监视了指定的键
     while((ln = listNext(&li))) {
         wk = listNodeValue(ln);
+        // 如果键已经被监视,则直接返回
         if (wk->db == c->db && equalStringObjects(key,wk->key))
             return; /* Key already watched */
     }
     /* This key is not already watched in this DB. Let's add it */
+    // 如果数据库中该键没有被client监视则添加它
     clients = dictFetchValue(c->db->watched_keys,key);
+    // 没有被client监视
     if (!clients) {
+        // 创建一个空链表
         clients = listCreate();
+        // 值是被client监控的key,键是client,添加到数据库的watched_keys字典中
         dictAdd(c->db->watched_keys,key,clients);
         incrRefCount(key);
     }
+    // 将当前client添加到监视该key的client链表的尾部
     listAddNodeTail(clients,c);
     /* Add the new key to the list of keys watched by this client */
+    // 将新的被监视的key和与该key关联的数据库加入到客户端的watched_keys中
     wk = zmalloc(sizeof(*wk));
     wk->key = key;
     wk->db = c->db;
@@ -264,15 +331,17 @@ void touchWatchedKey(redisDb *db, robj *key) {
     listNode *ln;
 
     if (dictSize(db->watched_keys) == 0) return;
+    // 找出监视该key的client链表
     clients = dictFetchValue(db->watched_keys, key);
     if (!clients) return;
 
     /* Mark all the clients watching this key as CLIENT_DIRTY_CAS */
     /* Check if we are already watching for this key */
     listRewind(clients,&li);
+    // 遍历所有监视该key的client
     while((ln = listNext(&li))) {
         client *c = listNodeValue(ln);
-
+        // 设置CLIENT_DIRTY_CAS标识
         c->flags |= CLIENT_DIRTY_CAS;
     }
 }
@@ -304,14 +373,17 @@ void touchWatchedKeysOnFlush(int dbid) {
     }
 }
 
+//WATCH命令
 void watchCommand(client *c) {
     int j;
-
+    //如果已经处于事务状态,则回复错误后返回,必须在执行MULTI命令执行前执行WATCH
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"WATCH inside MULTI is not allowed");
         return;
     }
+    // 遍历所有的参数
     for (j = 1; j < c->argc; j++)
+        // 监控当前key
         watchForKey(c,c->argv[j]);
     addReply(c,shared.ok);
 }
