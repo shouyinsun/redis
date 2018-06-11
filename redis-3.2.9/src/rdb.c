@@ -1553,8 +1553,8 @@ void backgroundSaveDoneHandlerDisk(int exitcode, int bysignal) {
 
 /***
  * 
-只读打开主节点的临时RDB文件，然后设置从节点client复制状态为SLAVE_STATE_SEND_BULK。
-立刻创建监听可写的事件，并设置sendBulkToSlave()函数为可写事件的处理程序。
+只读打开主节点的临时RDB文件,然后设置从节点client复制状态为SLAVE_STATE_SEND_BULK。
+立刻创建监听可写的事件,并设置sendBulkToSlave()函数为可写事件的处理程序。
  * 
  * ***/
 void backgroundSaveDoneHandlerSocket(int exitcode, int bysignal) {

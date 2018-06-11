@@ -59,7 +59,7 @@
 
 
 /**
-通过Redis客户端的命令来查看当前选择的多路复用库，INFO server
+通过Redis客户端的命令来查看当前选择的多路复用库,INFO server
 127.0.0.1:6379> INFO server
 # Server
 ……
@@ -297,7 +297,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
      * events to be processed ASAP when this happens: the idea is that
      * processing events earlier is less dangerous than delaying them
      * indefinitely, and practice suggests it is. */
-    // 这里尝试发现时间混乱的情况，上一次处理事件的时间比当前时间还要大
+    // 这里尝试发现时间混乱的情况,上一次处理事件的时间比当前时间还要大
     // 重置最近一次处理事件的时间
     if (now < eventLoop->lastTime) {
         te = eventLoop->timeEventHead;
@@ -398,7 +398,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
-    // 当前还没有要处理的文件事件，或者设置了时间事件但是没有设置不阻塞标识
+    // 当前还没有要处理的文件事件,或者设置了时间事件但是没有设置不阻塞标识
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
         int j;
@@ -425,18 +425,18 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 // 保存时长到tvp中
                 tvp->tv_sec = ms/1000;
                 tvp->tv_usec = (ms % 1000)*1000;
-            // 如果已经到时，则将tvp的时间设置为0
+            // 如果已经到时,则将tvp的时间设置为0
             } else {
                 tvp->tv_sec = 0;
                 tvp->tv_usec = 0;
             }
-        } else { // 没有获取到了最早到时的时间事件，时间事件链表为空
+        } else { // 没有获取到了最早到时的时间事件,时间事件链表为空
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
             //设置了不阻塞标识
             if (flags & AE_DONT_WAIT) {
-                // 将tvp的时间设置为0，就不会阻塞
+                // 将tvp的时间设置为0,就不会阻塞
                 tv.tv_sec = tv.tv_usec = 0;
                 tvp = &tv;
             } else {
@@ -447,7 +447,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         }
 
         // 等待所监听文件描述符上有事件发生
-        // 如果tvp为NULL，则阻塞在此，否则等待tvp设置阻塞的时间，就会有时间事件到时
+        // 如果tvp为NULL,则阻塞在此,否则等待tvp设置阻塞的时间,就会有时间事件到时
         // 返回了就绪文件事件的个数
         numevents = aeApiPoll(eventLoop, tvp);//不会一直等待,会有时间事件到期
         // 遍历就绪文件事件表
@@ -466,7 +466,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 fe->rfileProc(eventLoop,fd,fe->clientData,mask);
             }
             if (fe->mask & mask & AE_WRITABLE) { //文件可写事件发生
-                // 读写事件的执行发法不同，则执行写事件，避免重复执行相同的方法
+                // 读写事件的执行发法不同,则执行写事件,避免重复执行相同的方法
                 if (!rfired || fe->wfileProc != fe->rfileProc)
                     fe->wfileProc(eventLoop,fd,fe->clientData,mask);
             }

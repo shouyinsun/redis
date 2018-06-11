@@ -39,7 +39,7 @@ typedef struct aeApiState {
 } aeApiState; //事件的状态
 
 
-// 创建一个epoll实例，保存到eventLoop中
+// 创建一个epoll实例,保存到eventLoop中
 static int aeApiCreate(aeEventLoop *eventLoop) {
     aeApiState *state = zmalloc(sizeof(aeApiState));
 
@@ -83,13 +83,13 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     /* If the fd was already monitored for some event, we need a MOD
      * operation. Otherwise we need an ADD operation. */
 
-    // EPOLL_CTL_ADD，向epfd注册fd的上的event
-    // EPOLL_CTL_MOD，修改fd已注册的event
+    // EPOLL_CTL_ADD,向epfd注册fd的上的event
+    // EPOLL_CTL_MOD,修改fd已注册的event
     int op = eventLoop->events[fd].mask == AE_NONE ?
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
     ee.events = 0;
-    // 如果是修改事件，合并之前的事件类型
+    // 如果是修改事件,合并之前的事件类型
     mask |= eventLoop->events[fd].mask; /* Merge old events */
     // 根据mask映射epoll的事件类型
     if (mask & AE_READABLE) ee.events |= EPOLLIN;
@@ -132,7 +132,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         int j;
 
         numevents = retval;
-        // 遍历就绪的事件表，将其加入到eventLoop的就绪事件表中
+        // 遍历就绪的事件表,将其加入到eventLoop的就绪事件表中
         for (j = 0; j < numevents; j++) {
             int mask = 0;
             struct epoll_event *e = state->events+j;

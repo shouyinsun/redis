@@ -420,11 +420,11 @@ RANDOM：随机删除。
 
 /***
 CMD_CALL_NONE：没有指定flags
-CMD_CALL_SLOWLOG：检查命令的执行速度，如果需要记录在慢查询日志中
+CMD_CALL_SLOWLOG：检查命令的执行速度,如果需要记录在慢查询日志中
 CMD_CALL_STATS：记录命令的统计信息
-CMD_CALL_PROPAGATE_AOF：如果client设置了强制传播的标志或修改了数据集，则将命令追加到AOF文件中
-CMD_CALL_PROPAGATE_REPL：如果client设置了强制传播的标志或修改了数据集，则将命令发送给从节点服务器中
-CMD_CALL_PROPAGATE：如果client设置了强制传播的标志或修改了数据集，则将命令发送给从节点服务器或追加到AOF中
+CMD_CALL_PROPAGATE_AOF：如果client设置了强制传播的标志或修改了数据集,则将命令追加到AOF文件中
+CMD_CALL_PROPAGATE_REPL：如果client设置了强制传播的标志或修改了数据集,则将命令发送给从节点服务器中
+CMD_CALL_PROPAGATE：如果client设置了强制传播的标志或修改了数据集,则将命令发送给从节点服务器或追加到AOF中
 CMD_CALL_FULL：包含以上所有的含义 
  ****/
 #define CMD_CALL_NONE 0
@@ -597,23 +597,16 @@ typedef struct redisDb {
 } redisDb;
 
 /* Client MULTI/EXEC state */
-typedef struct multiCmd {// 事务命令状态
-    // 命令的参数列表
+typedef struct multiCmd {
     robj **argv;
-    // 命令的参数个数
     int argc;
-    // 命令函数指针
     struct redisCommand *cmd;
 } multiCmd;
 
-typedef struct multiState {//事务状态结构体
-    // 事务命令队列数组
+typedef struct multiState {
     multiCmd *commands;     /* Array of MULTI commands */
-    // 事务命令的个数
     int count;              /* Total number of MULTI commands */
-    // 同步复制的标识
     int minreplicas;        /* MINREPLICAS for synchronous replication */
-    // 同步复制的超时时间
     time_t minreplicas_timeout; /* MINREPLICAS timeout as unixtime. */
 } multiState;
 
@@ -678,7 +671,7 @@ typedef struct client {
     robj **argv;            /* Arguments of current command. */
     // 当前执行的命令和最近一次执行的命令
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
-    // 请求协议类型，内联或者多条命令，初始化为0
+    // 请求协议类型,内联或者多条命令,初始化为0
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
     // 查询缓冲区剩余未读取命令的数量
     int multibulklen;       /* Number of multi bulk arguments left to read. */
@@ -700,9 +693,9 @@ typedef struct client {
     int flags;              /* Client flags: CLIENT_* macros. */
     // 认证状态
     int authenticated;      /* When requirepass is non-NULL. */
-    // replication复制的状态，初始为无
+    // replication复制的状态,初始为无
     int replstate;          /* Replication state if this is a slave. */
-    // 设置从节点的写处理器为ack，是否在slave向master发送ack
+    // 设置从节点的写处理器为ack,是否在slave向master发送ack
     int repl_put_online_on_ack; /* Install slave write handler on ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
     off_t repldboff;        /* Replication DB file offset. */
@@ -724,7 +717,6 @@ typedef struct client {
     char slave_ip[NET_IP_STR_LEN]; /* Optionally given by REPLCONF ip-address */
     // 从节点的功能
     int slave_capa;         /* Slave capabilities: SLAVE_CAPA_* bitwise OR. */
-    // 事务状态
     multiState mstate;      /* MULTI/EXEC state */
     int btype;              /* Type of blocking op if CLIENT_BLOCKED. */
     //阻塞状态
@@ -737,7 +729,7 @@ typedef struct client {
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
     // 订阅模式
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
-    // 被缓存的peerid，peerid就是 ip:port
+    // 被缓存的peerid,peerid就是 ip:port
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */

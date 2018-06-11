@@ -3909,6 +3909,7 @@ void memtest(size_t megabytes, int passes);
 
 /* Returns 1 if there is --sentinel among the arguments or if
  * argv[0] is exactly "redis-sentinel". */
+//判断是否开启哨兵模式
 int checkForSentinelMode(int argc, char **argv) {
     int j;
 
@@ -4117,7 +4118,9 @@ int main(int argc, char **argv) {
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
     if (server.sentinel_mode) {// 如果已开启哨兵模式
-        initSentinelConfig(); // 初始化哨兵的配置
+        //初始化Sentinel节点的默认配置
+        initSentinelConfig(); 
+        //始化Sentinel节点的状态
         initSentinel();
     }
 
@@ -4207,6 +4210,7 @@ int main(int argc, char **argv) {
     checkTcpBacklogSettings();
 
     if (!server.sentinel_mode) {// 如果不是哨兵模式
+        // 在不是哨兵模式下,会载入AOF文件和RDB文件,打印内存警告,集群模式载入数据等等操作
         /* Things not needed when running in Sentinel mode. */
         serverLog(LL_WARNING,"Server started, Redis version " REDIS_VERSION);
     #ifdef __linux__
@@ -4225,7 +4229,7 @@ int main(int argc, char **argv) {
             serverLog(LL_NOTICE,"The server is now ready to accept connections on port %d", server.port);
         if (server.sofd > 0)
             serverLog(LL_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
-    } else {
+    } else {// 开启哨兵模式 哨兵模式和集群模式只能开启一种
         sentinelIsRunning();
     }
 

@@ -28,6 +28,36 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/****
+ * 
+Sentinel配置说明  sentinel.conf
+
+sentinel monitor mymaster 127.0.0.1 6379 2
+
+当前Sentinel节点监控 127.0.0.1:6379 这个主节点
+2代表判断主节点失败至少需要2个Sentinel节点节点同意
+mymaster是主节点的别名
+sentinel down-after-milliseconds mymaster 30000
+
+每个Sentinel节点都要定期PING命令来判断Redis数据节点和其余Sentinel节点是否可达，如果超过30000毫秒且没有回复，则判定不可达
+sentinel parallel-syncs mymaster 1
+
+当Sentinel节点集合对主节点故障判定达成一致时，Sentinel领导者节点会做故障转移操作，选出新的主节点，原来的从节点会向新的主节点发起复制操作，限制每次向新的主节点发起复制操作的从节点个数为1。
+sentinel failover-timeout mymaster 180000
+
+故障转移超时时间为180000
+sentinel auth-pass \ \ 
+如果Sentinel监控的主节点配置了密码，可以通过sentinel auth-pass配置通过添加主节点的密码，防止Sentinel节点无法对主节点进行监控。
+例如：sentinel auth-pass mymaster MySUPER--secret-0123passw0rd
+sentinel notification-script \ \ 
+在故障转移期间，当一些警告级别的Sentinel事件发生（指重要事件，如主观下线，客观下线等）时，会触发对应路径的脚本，想脚本发送相应的事件参数。
+例如：sentinel notification-script mymaster /var/redis/notify.sh
+sentinel client-reconfig-script \ \ 
+在故障转移结束后，触发应对路径的脚本，并向脚本发送故障转移结果的参数。
+例如：sentinel client-reconfig-script mymaster /var/redis/reconfig.sh。
+ * ***/
+
 #include "server.h"
 #include "hiredis.h"
 #include "async.h"
@@ -161,21 +191,38 @@ typedef struct instanceLink {
 } instanceLink;
 
 typedef struct sentinelRedisInstance {
+    // 标识值，记录了当前Redis实例的类型和状态
     int flags;      /* See SRI_... defines */
+    // 实例的名字
+    // 主节点的名字由用户在配置文件中设置
+    // 从节点以及Sentinel节点的名字由Sentinel自动设置，格式为：ip:port
     char *name;     /* Master name from the point of view of this sentinel. */
+    // 实例运行的独一无二ID
     char *runid;    /* Run ID of this instance, or unique ID if is a Sentinel.*/
+    // 配置纪元，用于实现故障转移
     uint64_t config_epoch;  /* Configuration epoch. */
+    // 实例地址：ip和port
     sentinelAddr *addr; /* Master host. */
+    // 实例的连接，有可能是被Sentinel共享的
     instanceLink *link; /* Link to the instance, may be shared for Sentinels. */
+    // 最近一次通过 Pub/Sub 发送信息的时间
     mstime_t last_pub_time;   /* Last time we sent hello via Pub/Sub. */
+    // 只有被Sentinel实例使用
+    // 最近一次接收到从Sentinel发送来hello的时间
     mstime_t last_hello_time; /* Only used if SRI_SENTINEL is set. Last time
                                  we received a hello from this Sentinel
                                  via Pub/Sub. */
+    // 最近一次回复SENTINEL is-master-down的时间
     mstime_t last_master_down_reply_time; /* Time of last reply to
                                              SENTINEL is-master-down command. */
+    // 实例被判断为主观下线的时间
     mstime_t s_down_since_time; /* Subjectively down since time. */
+    // 实例被判断为客观下线的时间
     mstime_t o_down_since_time; /* Objectively down since time. */
+    // 实例无响应多少毫秒之后被判断为主观下线
+    // 由SENTINEL down-after-millisenconds配置设定
     mstime_t down_after_period; /* Consider it down after that period. */
+    // 从实例获取INFO命令回复的时间
     mstime_t info_refresh;  /* Time at which we received INFO output from it. */
 
     /* Role and the first time we observed it.
@@ -183,46 +230,80 @@ typedef struct sentinelRedisInstance {
      * with our own configuration. We need to always wait some time in order
      * to give a chance to the leader to report the new configuration before
      * we do silly things. */
+    // 实例的角色
     int role_reported;
+    // 角色更新的时间
     mstime_t role_reported_time;
+    // 最近一次从节点的主节点地址变更的时间
     mstime_t slave_conf_change_time; /* Last time slave master addr changed. */
 
     /* Master specific. */
+    /*----------------------------------主节点特有的属性----------------------------------*/
+    // 其他监控相同主节点的Sentinel
     dict *sentinels;    /* Other sentinels monitoring the same master. */
+    // 如果当前实例是主节点，那么slaves保存着该主节点的所有从节点实例
+    // 键是从节点命令，值是从节点服务器对应的sentinelRedisInstance
     dict *slaves;       /* Slaves for this master instance. */
+    // 判定该主节点客观下线的投票数
     unsigned int quorum;/* Number of sentinels that need to agree on failure. */
+    // 在故障转移时，可以同时对新的主节点进行同步的从节点数量
+    // 由sentinel parallel-syncs <master-name> <number>配置
     int parallel_syncs; /* How many slaves to reconfigure at same time. */
+    // 连接主节点和从节点的认证密码
     char *auth_pass;    /* Password to use for AUTH against master & slaves. */
 
     /* Slave specific. */
+    /*----------------------------------从节点特有的属性----------------------------------*/
+    // 从节点复制操作断开时间
     mstime_t master_link_down_time; /* Slave replication link down time. */
+    // 按照INFO命令输出的从节点优先级
     int slave_priority; /* Slave priority according to its INFO output. */
+    // 故障转移时，从节点发送SLAVEOF <new>命令的时间
     mstime_t slave_reconf_sent_time; /* Time at which we sent SLAVE OF <new> */
+    // 如果当前实例是从节点，那么保存该从节点连接的主节点实例
     struct sentinelRedisInstance *master; /* Master instance if it's slave. */
+    // INFO命令的回复中记录的主节点的IP
     char *slave_master_host;    /* Master host as reported by INFO */
+    // INFO命令的回复中记录的主节点的port
     int slave_master_port;      /* Master port as reported by INFO */
+    // INFO命令的回复中记录的主从服务器连接的状态
     int slave_master_link_status; /* Master link status as reported by INFO */
+    // 从节点复制偏移量
     unsigned long long slave_repl_offset; /* Slave replication offset. */
     /* Failover */
+    /*----------------------------------故障转移的属性----------------------------------*/
+    // 如果这是一个主节点实例，那么leader保存的是执行故障转移的Sentinel的runid
+    // 如果这是一个Sentinel实例，那么leader保存的是当前这个Sentinel实例选举出来的领头的runid
     char *leader;       /* If this is a master instance, this is the runid of
                            the Sentinel that should perform the failover. If
                            this is a Sentinel, this is the runid of the Sentinel
                            that this Sentinel voted as leader. */
+    // leader字段的纪元
     uint64_t leader_epoch; /* Epoch of the 'leader' field. */
+    // 当前执行故障转移的纪元
     uint64_t failover_epoch; /* Epoch of the currently started failover. */
+    // 故障转移操作的状态
     int failover_state; /* See SENTINEL_FAILOVER_STATE_* defines. */
+    // 故障转移操作状态改变的时间
     mstime_t failover_state_change_time;
+    // 最近一次故障转移尝试开始的时间
     mstime_t failover_start_time;   /* Last failover attempt start time. */
+    // 更新故障转移状态的最大超时时间
     mstime_t failover_timeout;      /* Max time to refresh failover state. */
+    // 记录故障转移延迟的时间
     mstime_t failover_delay_logged; /* For what failover_start_time value we
                                        logged the failover delay. */
+    // 晋升为新主节点的从节点实例
     struct sentinelRedisInstance *promoted_slave; /* Promoted slave instance. */
     /* Scripts executed to notify admin or reconfigure clients: when they
      * are set to NULL no script is executed. */
+    // 通知admin的可执行脚本的地址，如果设置为空，则没有执行的脚本
     char *notification_script;
+    // 通知配置的client的可执行脚本的地址，如果设置为空，则没有执行的脚本
     char *client_reconfig_script;
+    // 缓存INFO命令的输出
     sds info; /* cached INFO output */
-} sentinelRedisInstance;
+} sentinelRedisInstance;  //哨兵redis实例结构
 
 /* Main state. */
 struct sentinelState {
@@ -438,17 +519,21 @@ struct redisCommand sentinelcmds[] = {
 
 /* This function overwrites a few normal Redis config default with Sentinel
  * specific defaults. */
+// 设置Sentinel的默认端口，覆盖服务器的默认属性
 void initSentinelConfig(void) {
     server.port = REDIS_SENTINEL_PORT;
 }
 
 /* Perform the Sentinel mode initialization. */
+// 执行Sentinel模式的初始化操作
 void initSentinel(void) {
     unsigned int j;
 
     /* Remove usual Redis commands from the command table, then just add
      * the SENTINEL command. */
+    // 将服务器的命令表清空
     dictEmpty(server.commands,NULL);
+    // 只添加Sentinel模式的相关命令，Sentinel模式下一共11个命令
     for (j = 0; j < sizeof(sentinelcmds)/sizeof(sentinelcmds[0]); j++) {
         int retval;
         struct redisCommand *cmd = sentinelcmds+j;
@@ -458,16 +543,25 @@ void initSentinel(void) {
     }
 
     /* Initialize various data structures. */
+    // 当前纪元，用于实现故障转移操作
     sentinel.current_epoch = 0;
+    // 监控的主节点信息的字典
     sentinel.masters = dictCreate(&instancesDictType,NULL);
+    // TILT模式
     sentinel.tilt = 0;
     sentinel.tilt_start_time = 0;
+    // 最后执行时间处理程序的时间
     sentinel.previous_time = mstime();
+    // 正在执行的脚本数量
     sentinel.running_scripts = 0;
+    // 用户脚本的队列
     sentinel.scripts_queue = listCreate();
+    // Sentinel通过流言协议接收关于主服务器的ip和por
     sentinel.announce_ip = NULL;
     sentinel.announce_port = 0;
+    // 故障模拟
     sentinel.simfailure_flags = SENTINEL_SIMFAILURE_NONE;
+    // Sentinel的ID置为0
     memset(sentinel.myid,0,sizeof(sentinel.myid));
 }
 
@@ -664,6 +758,7 @@ void sentinelReleaseScriptJob(sentinelScriptJob *sj) {
 }
 
 #define SENTINEL_SCRIPT_MAX_ARGS 16
+// 将给定参数和脚本放入用户脚本队列中
 void sentinelScheduleScriptExecution(char *path, ...) {
     va_list ap;
     char *argv[SENTINEL_SCRIPT_MAX_ARGS+1];
@@ -671,6 +766,7 @@ void sentinelScheduleScriptExecution(char *path, ...) {
     sentinelScriptJob *sj;
 
     va_start(ap, path);
+    // 将参数保存到argv中
     while(argc < SENTINEL_SCRIPT_MAX_ARGS) {
         argv[argc] = va_arg(ap,char*);
         if (!argv[argc]) break;
@@ -678,29 +774,33 @@ void sentinelScheduleScriptExecution(char *path, ...) {
         argc++;
     }
     va_end(ap);
+    // 第一个参数是脚本的路径
     argv[0] = sdsnew(path);
-
+    // 分配脚本任务结构的空间
     sj = zmalloc(sizeof(*sj));
-    sj->flags = SENTINEL_SCRIPT_NONE;
-    sj->retry_num = 0;
-    sj->argv = zmalloc(sizeof(char*)*(argc+1));
-    sj->start_time = 0;
-    sj->pid = 0;
+    sj->flags = SENTINEL_SCRIPT_NONE;//脚本限制
+    sj->retry_num = 0;//执行次数
+    sj->argv = zmalloc(sizeof(char*)*(argc+1));//参数列表
+    sj->start_time = 0;//开始时间
+    sj->pid = 0;//执行脚本子进程的pid
     memcpy(sj->argv,argv,sizeof(char*)*(argc+1));
-
+    // 添加到脚本队列中
     listAddNodeTail(sentinel.scripts_queue,sj);
 
     /* Remove the oldest non running script if we already hit the limit. */
+    // 如果队列长度大于256个，那么删除最旧的脚本，只保留255个
     if (listLength(sentinel.scripts_queue) > SENTINEL_SCRIPT_MAX_QUEUE) {
         listNode *ln;
         listIter li;
 
         listRewind(sentinel.scripts_queue,&li);
+        // 遍历脚本链表队列
         while ((ln = listNext(&li)) != NULL) {
             sj = ln->value;
 
             if (sj->flags & SENTINEL_SCRIPT_RUNNING) continue;
             /* The first node is the oldest as we add on tail. */
+            // 删除最旧的脚本
             listDelNode(sentinel.scripts_queue,ln);
             sentinelReleaseScriptJob(sj);
             break;
@@ -728,6 +828,7 @@ listNode *sentinelGetScriptListNodeByPid(pid_t pid) {
 
 /* Run pending scripts if we are not already at max number of running
  * scripts. */
+//执行脚本
 void sentinelRunPendingScripts(void) {
     listNode *ln;
     listIter li;
@@ -736,6 +837,7 @@ void sentinelRunPendingScripts(void) {
     /* Find jobs that are not running and run them, from the top to the
      * tail of the queue, so we run older jobs first. */
     listRewind(sentinel.scripts_queue,&li);
+    // 遍历脚本链表队列，如果没有超过同一时刻最多运行脚本的数量，找到没有正在运行的脚本
     while (sentinel.running_scripts < SENTINEL_SCRIPT_MAX_RUNNING &&
            (ln = listNext(&li)) != NULL)
     {
@@ -743,17 +845,21 @@ void sentinelRunPendingScripts(void) {
         pid_t pid;
 
         /* Skip if already running. */
+        // 跳过正在运行的脚本
         if (sj->flags & SENTINEL_SCRIPT_RUNNING) continue;
 
         /* Skip if it's a retry, but not enough time has elapsed. */
+        // 该脚本没有到达重新执行的时间，跳过
         if (sj->start_time && sj->start_time > now) continue;
 
+        // 设置正在执行标志
         sj->flags |= SENTINEL_SCRIPT_RUNNING;
         sj->start_time = mstime();
         sj->retry_num++;
+        // 创建子进程执行
         pid = fork();
 
-        if (pid == -1) {
+        if (pid == -1) {// fork()失败，报告错误
             /* Parent (fork error).
              * We report fork errors as signal 99, in order to unify the
              * reporting with other kind of errors. */
@@ -792,10 +898,12 @@ mstime_t sentinelScriptRetryDelay(int retry_num) {
  * script terminated successfully. If instead the script was terminated by
  * a signal, or returned exit code "1", it is scheduled to run again if
  * the max number of retries did not already elapsed. */
+// 清理已成功执行的脚本，重试执行错误的脚本
 void sentinelCollectTerminatedScripts(void) {
     int statloc;
     pid_t pid;
-
+    // 接受子进程退出码
+    // WNOHANG：如果没有子进程退出，则立刻返回
     while ((pid = wait3(&statloc,WNOHANG,NULL)) > 0) {
         int exitcode = WEXITSTATUS(statloc);
         int bysignal = 0;
@@ -805,7 +913,7 @@ void sentinelCollectTerminatedScripts(void) {
         if (WIFSIGNALED(statloc)) bysignal = WTERMSIG(statloc);
         sentinelEvent(LL_DEBUG,"-script-child",NULL,"%ld %d %d",
             (long)pid, exitcode, bysignal);
-
+        // 根据pid查找并返回正在运行的脚本节点
         ln = sentinelGetScriptListNodeByPid(pid);
         if (ln == NULL) {
             serverLog(LL_WARNING,"wait3() returned a pid (%ld) we can't find in our scripts execution queue!", (long)pid);
@@ -816,6 +924,7 @@ void sentinelCollectTerminatedScripts(void) {
         /* If the script was terminated by a signal or returns an
          * exit code of "1" (that means: please retry), we reschedule it
          * if the max number of retries is not already reached. */
+        // 如果退出码是1并且没到脚本最大的重试数量
         if ((bysignal || exitcode == 1) &&
             sj->retry_num != SENTINEL_SCRIPT_MAX_RETRY)
         {
@@ -823,6 +932,7 @@ void sentinelCollectTerminatedScripts(void) {
             sj->pid = 0;
             sj->start_time = mstime() +
                              sentinelScriptRetryDelay(sj->retry_num);
+        // 脚本不能重新执行
         } else {
             /* Otherwise let's remove the script, but log the event if the
              * execution did not terminated in the best of the ways. */
@@ -839,20 +949,24 @@ void sentinelCollectTerminatedScripts(void) {
 
 /* Kill scripts in timeout, they'll be collected by the
  * sentinelCollectTerminatedScripts() function. */
+//Sentinel规定一个脚本最多执行60s，如果执行超时，则会杀死正在执行的脚本
 void sentinelKillTimedoutScripts(void) {
     listNode *ln;
     listIter li;
     mstime_t now = mstime();
 
     listRewind(sentinel.scripts_queue,&li);
+
     while ((ln = listNext(&li)) != NULL) {
         sentinelScriptJob *sj = ln->value;
-
+        // 如果当前脚本正在执行且执行，且脚本执行的时间超过60s
         if (sj->flags & SENTINEL_SCRIPT_RUNNING &&
             (now - sj->start_time) > SENTINEL_SCRIPT_MAX_RUNTIME)
         {
+            // 发送脚本超时的事件
             sentinelEvent(LL_WARNING,"-script-timeout",NULL,"%s %ld",
                 sj->argv[0], (long)sj->pid);
+            // 杀死执行脚本的子进程
             kill(sj->pid,SIGKILL);
         }
     }
@@ -1141,7 +1255,16 @@ void sentinelDisconnectCallback(const redisAsyncContext *c, int status) {
  * The function may also fail and return NULL with errno set to EBUSY if
  * a master with the same name, a slave with the same address, or a sentinel
  * with the same ID already exists. */
+//创建被该哨兵节点所监控的主节点实例
+//主节点实例保存到sentinel.masters字典中
 
+/**
+根据参数flags不同创建不同类型的实例，并且将实例保存到不同的字典中：
+
+SRI_MASTER：创建一个主节点实例，保存到当前哨兵节点监控的主节点字典中。
+SRI_SLAVE：创建一个从节点实例，保存到主节点实例的从节点字典中。
+SRI_SENTINE：创建一个哨兵节点实例，保存到其他监控该主节点实例的哨兵节点的字典中。
+ * ***/
 sentinelRedisInstance *createSentinelRedisInstance(char *name, int flags, char *hostname, int port, int quorum, sentinelRedisInstance *master) {
     sentinelRedisInstance *ri;
     sentinelAddr *addr;
@@ -1347,6 +1470,7 @@ sentinelRedisInstance *getSentinelRedisInstanceByAddrAndRunID(dict *instances, c
 }
 
 /* Master lookup by name */
+//根据名字在哨兵节点的主节点字典中找到主节点实例
 sentinelRedisInstance *sentinelGetMasterByName(char *name) {
     sentinelRedisInstance *ri;
     sds sdsname = sdsnew(name);
@@ -1569,14 +1693,18 @@ char *sentinelGetInstanceTypeString(sentinelRedisInstance *ri) {
 }
 
 /* ============================ Config handling ============================= */
+//sentinel 配置信息
 char *sentinelHandleConfiguration(char **argv, int argc) {
     sentinelRedisInstance *ri;
 
+    // SENTINEL monitor选项
     if (!strcasecmp(argv[0],"monitor") && argc == 5) {
         /* monitor <name> <host> <port> <quorum> */
+        //投票数
         int quorum = atoi(argv[4]);
-
+        // 投票数必须大于等于1
         if (quorum <= 0) return "Quorum must be 1 or greater.";
+        // 创建一个主节点实例，并加入到Sentinel所监控的master字典中
         if (createSentinelRedisInstance(argv[1],SRI_MASTER,argv[2],
                                         atoi(argv[3]),quorum,NULL) == NULL)
         {
@@ -1586,13 +1714,18 @@ char *sentinelHandleConfiguration(char **argv, int argc) {
             case EINVAL: return "Invalid port number";
             }
         }
+    // sentinel down-after-milliseconds选项    
     } else if (!strcasecmp(argv[0],"down-after-milliseconds") && argc == 3) {
         /* down-after-milliseconds <name> <milliseconds> */
+        // 获取根据name查找主节点实例
         ri = sentinelGetMasterByName(argv[1]);
         if (!ri) return "No such master with specified name.";
+        // 设置主节点实例的主观下线的判断时间
         ri->down_after_period = atoi(argv[2]);
         if (ri->down_after_period <= 0)
             return "negative or zero time parameter.";
+        // 根据ri主节点的down_after_period字段的值
+        // 设置所有连接该主节点的从节点和Sentinel实例的主观下线的判断时间    
         sentinelPropagateDownAfterPeriod(ri);
     } else if (!strcasecmp(argv[0],"failover-timeout") && argc == 3) {
         /* failover-timeout <name> <milliseconds> */
@@ -4270,19 +4403,29 @@ void sentinelHandleDictOfRedisInstances(dict *instances) {
 
     /* There are a number of things we need to perform against every master. */
     di = dictGetIterator(instances);
+    // 遍历字典中所有的实例
     while((de = dictNext(di)) != NULL) {
+        // 对指定的ri实例执行周期性操作
         sentinelRedisInstance *ri = dictGetVal(de);
 
         sentinelHandleRedisInstance(ri);
+        // 如果ri实例是主节点
         if (ri->flags & SRI_MASTER) {
+            // 递归的对主节点从属的从节点执行周期性操作
             sentinelHandleDictOfRedisInstances(ri->slaves);
+            // 递归的对监控主节点的Sentinel节点执行周期性操作
             sentinelHandleDictOfRedisInstances(ri->sentinels);
+            // 如果ri实例处于完成故障转移操作的状态，所有从节点已经完成对新主节点的同步
             if (ri->failover_state == SENTINEL_FAILOVER_STATE_UPDATE_CONFIG) {
+                // 设置主从转换的标识
                 switch_to_promoted = ri;
             }
         }
     }
+    // 如果主从节点发生了转换
     if (switch_to_promoted)
+        // 将原来的主节点从主节点表中删除，并用晋升的主节点替代
+        // 意味着已经用新晋升的主节点代替旧的主节点，包括所有从节点和旧的主节点从属当前新的主节点
         sentinelFailoverSwitchToPromotedSlave(switch_to_promoted);
     dictReleaseIterator(di);
 }
@@ -4306,23 +4449,45 @@ void sentinelHandleDictOfRedisInstances(dict *instances) {
  * for SENTINEL_TILT_PERIOD to elapse before starting to act again.
  *
  * During TILT time we still collect information, we just do not act. */
+
+/***
+ * TILT 模式是一种特殊的保护模式：当 Sentinel 发现系统有些不对劲时，Sentinel 就会进入 TILT 模式。
+
+因为 Sentinel 的时间中断器默认每秒执行 10 次，所以我们预期时间中断器的两次执行之间的间隔为 100 毫秒左右。但是出现以下情况会出现异常：
+
+Sentinel进程在某时被阻塞，有很多种原因，负载过大，IO任务密集，进程被信号停止等等。
+系统时钟发送明显变化
+Sentinel 的做法是，记录上一次时间中断器执行时的时间，并将它和这一次时间中断器执行的时间进行对比：
+
+如果两次调用时间之间的差距为负值，或者非常大（超过 2 秒钟），那么 Sentinel 进入 TILT 模式。
+如果 Sentinel 已经进入 TILT 模式，那么 Sentinel 延迟退出 TILT 模式的时间。
+ * ***/
 void sentinelCheckTiltCondition(void) {
     mstime_t now = mstime();
+    // 最后一次执行Sentinel时间处理程序的时间过去了过久
     mstime_t delta = now - sentinel.previous_time;
-
+    // 差为负数，或者大于2秒
     if (delta < 0 || delta > SENTINEL_TILT_TRIGGER) {
+        // 设置Sentinel进入TILT状态
         sentinel.tilt = 1;
+        // 设置进入TILT状态的开始时间
         sentinel.tilt_start_time = mstime();
         sentinelEvent(LL_WARNING,"+tilt",NULL,"#tilt mode entered");
     }
+    // 设置最近一次执行Sentinel时间处理程序的时间
     sentinel.previous_time = mstime();
 }
 
 void sentinelTimer(void) {
+    // 先检查Sentinel是否需要进入TITL模式，更新最近一次执行Sentinel模式的周期函数的时间
     sentinelCheckTiltCondition();
+    // 对Sentinel监控的所有主节点进行递归式的执行周期性操作
     sentinelHandleDictOfRedisInstances(sentinel.masters);
+    // 运行在队列中等待的脚本
     sentinelRunPendingScripts();
+    // 清理已成功执行的脚本，重试执行错误的脚本
     sentinelCollectTerminatedScripts();
+    // 杀死执行超时的脚本，等到下个周期在sentinelCollectTerminatedScripts()函数中重试执行
     sentinelKillTimedoutScripts();
 
     /* We continuously change the frequency of the Redis "timer interrupt"
@@ -4331,6 +4496,7 @@ void sentinelTimer(void) {
      * exactly continue to stay synchronized asking to be voted at the
      * same time again and again (resulting in nobody likely winning the
      * election because of split brain voting). */
+    //不断改变Redis定期任务的执行频率，以便使每个Sentinel节点都不同步，这种不确定性可以避免Sentinel在同一时间开始完全继续保持同步，当被要求进行投票时，一次又一次在同一时间进行投票，因为脑裂导致有可能没有胜选者
     server.hz = CONFIG_DEFAULT_HZ + rand() % CONFIG_DEFAULT_HZ;
 }
 
