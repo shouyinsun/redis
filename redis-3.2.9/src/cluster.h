@@ -38,12 +38,17 @@ struct clusterNode;
 
 /* clusterLink encapsulates everything needed to talk with a remote node. */
 typedef struct clusterLink {
+    // 连接创建的时间
     mstime_t ctime;             /* Link creation time */
+    // TCP连接的文件描述符
     int fd;                     /* TCP socket file descriptor */
+    // 输出（发送）缓冲区
     sds sndbuf;                 /* Packet send buffer */
+    // 输入（接收）缓冲区
     sds rcvbuf;                 /* Packet reception buffer */
+    // 关联该连接的节点
     struct clusterNode *node;   /* Node related to this link if any, or NULL */
-} clusterLink;
+} clusterLink;//描述该节点与一个节点建立的连接
 
 /* Cluster node flags and macros. */
 #define CLUSTER_NODE_MASTER 1     /* The node is a master */
@@ -80,66 +85,114 @@ typedef struct clusterNodeFailReport {
 } clusterNodeFailReport;
 
 typedef struct clusterNode {
+    // 节点创建的时间
     mstime_t ctime; /* Node object creation time. */
+    // 名字
     char name[CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
+    // 标识
     int flags;      /* CLUSTER_NODE_... */
     uint64_t configEpoch; /* Last configEpoch observed for this node */
+    // 节点的槽位图
     unsigned char slots[CLUSTER_SLOTS/8]; /* slots handled by this node */
+    // 当前节点复制槽的数量
     int numslots;   /* Number of slots handled by this node */
+    // 从节点的数量
     int numslaves;  /* Number of slave nodes, if this is a master */
+    // 从节点指针数组
     struct clusterNode **slaves; /* pointers to slave nodes */
+    // 指向主节点,即使是从节点也可以为NULL
     struct clusterNode *slaveof; /* pointer to the master node. Note that it
                                     may be NULL even if the node is a slave
                                     if we don't have the master node in our
                                     tables. */
+    // 最近一次发送PING的时间
     mstime_t ping_sent;      /* Unix time we sent latest ping */
+    // 接收到PONG的时间
     mstime_t pong_received;  /* Unix time we received the pong */
+    // 被设置为FAIL的下线时间
     mstime_t fail_time;      /* Unix time when FAIL flag was set */
+    // 最近一次为从节点投票的时间
     mstime_t voted_time;     /* Last time we voted for a slave of this master */
+    // 更新复制偏移量的时间
     mstime_t repl_offset_time;  /* Unix time we received offset for this node */
+    // 孤立的主节点迁移的时间
     mstime_t orphaned_time;     /* Starting time of orphaned master condition */
+    // 该节点已知的复制偏移量
     long long repl_offset;      /* Last known repl offset for this node. */
+    // ip地址
     char ip[NET_IP_STR_LEN];  /* Latest known IP address of this node */
+    // 节点端口号
     int port;                   /* Latest known port of this node */
+    // 与该节点关联的连接对象
+    /*****
+     * 集群两个节点之间相互发送消息
+     * 如果节点A发送MEET消息给节点B
+     * 那么节点A会创建一个clusterLink结构的连接,fd设置为连接后的套节字,node设置为节点B,最后将该clusterLink结构保存到节点B的link中
+     * ******/
     clusterLink *link;          /* TCP/IP link with this node */
+    // 保存下线报告的链表
     list *fail_reports;         /* List of nodes signaling this as failing */
-} clusterNode;
+} clusterNode;//集群节点信息
 
 typedef struct clusterState {
+    //当前节点
     clusterNode *myself;  /* This node */
+    //当前纪元
     uint64_t currentEpoch;
+    // 集群的状态
     int state;            /* CLUSTER_OK, CLUSTER_FAIL, ... */
+    //集群中至少负责一个槽的主节点个数
     int size;             /* Num of master nodes with at least one slot */
+    // 保存集群节点的字典,键是节点名字,值是clusterNode结构的指针
     dict *nodes;          /* Hash table of name -> clusterNode structures */
+    // 防止重复添加节点的黑名单
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
+    // 导入槽数据到目标节点,该数组记录这些节点
     clusterNode *migrating_slots_to[CLUSTER_SLOTS];
+    // 导出槽数据到目标节点,该数组记录这些节点
     clusterNode *importing_slots_from[CLUSTER_SLOTS];
+    // 槽和负责槽节点的映射
     clusterNode *slots[CLUSTER_SLOTS];
+    // 槽映射到键的有序集合
     zskiplist *slots_to_keys;
     /* The following fields are used to take the slave state on elections. */
+    // 之前或下一次选举的时间
     mstime_t failover_auth_time; /* Time of previous or next election. */
+    // 节点获得支持的票数
     int failover_auth_count;    /* Number of votes received so far. */
+    // 如果为真 表示本节点已经向其他节点发送了投票请求
     int failover_auth_sent;     /* True if we already asked for votes. */
+    // 该从节点在当前请求中的排名
     int failover_auth_rank;     /* This slave rank for current auth request. */
+    // 当前选举的纪元
     uint64_t failover_auth_epoch; /* Epoch of the current election. */
+    // 从节点不能执行故障转移的原因
     int cant_failover_reason;   /* Why a slave is currently not able to
                                    failover. See the CANT_FAILOVER_* macros. */
     /* Manual failover state in common. */
+    // 如果为0,表示没有正在进行手动的故障转移。否则表示手动故障转移的时间限制
     mstime_t mf_end;            /* Manual failover time limit (ms unixtime).
                                    It is zero if there is no MF in progress. */
     /* Manual failover state of master. */
+    // 执行手动孤战转移的从节点
     clusterNode *mf_slave;      /* Slave performing the manual failover. */
     /* Manual failover state of slave. */
+    // 从节点记录手动故障转移时的主节点偏移量
     long long mf_master_offset; /* Master offset the slave needs to start MF
                                    or zero if stil not received. */
+    // 非零值表示手动故障转移能开始
     int mf_can_start;           /* If non-zero signal that the manual failover
                                    can start requesting masters vote. */
     /* The followign fields are used by masters to take state on elections. */
+    // 集群最近一次投票的纪元
     uint64_t lastVoteEpoch;     /* Epoch of the last vote granted. */
+    // 调用clusterBeforeSleep()所做的一些事
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
+    // 发送的字节数
     long long stats_bus_messages_sent;  /* Num of msg sent via cluster bus. */
+    // 通过Cluster接收到的消息数量
     long long stats_bus_messages_received; /* Num of msg rcvd via cluster bus.*/
-} clusterState;
+} clusterState;//集群的状态信息
 
 /* clusterState todo_before_sleep flags. */
 #define CLUSTER_TODO_HANDLE_FAILOVER (1<<0)
@@ -167,15 +220,21 @@ typedef struct clusterState {
  * to the first node, using the getsockname() function. Then we'll use this
  * address for all the next messages. */
 typedef struct {
+    // 节点名字
     char nodename[CLUSTER_NAMELEN];
+    // 最近一次发送PING的时间戳
     uint32_t ping_sent;
+    // 最近一次接收PONG的时间戳
     uint32_t pong_received;
+    // 节点的IP地址
     char ip[NET_IP_STR_LEN];  /* IP address last time it was seen */
+    // 节点的端口号
     uint16_t port;              /* port last time it was seen */
+    // 节点的标识
     uint16_t flags;             /* node->flags copy */
     uint16_t notused1;          /* Some room for future improvements. */
     uint32_t notused2;
-} clusterMsgDataGossip;
+} clusterMsgDataGossip;//集群gossip消息结构
 
 typedef struct {
     char nodename[CLUSTER_NAMELEN];

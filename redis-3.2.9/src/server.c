@@ -2054,6 +2054,7 @@ void initServer(void) {
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 
+    //初始化server.cluster
     if (server.cluster_enabled) clusterInit();
     replicationScriptCacheInit();
     scriptingInit(1);
@@ -4192,6 +4193,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
         resetServerSaveParams();
+        //载入配置文件
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
